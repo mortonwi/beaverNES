@@ -1,6 +1,5 @@
 name: beaverNes CI
 
-# Run this workflow when code is pushed or a PR is opened
 on:
   push:
   pull_request:
@@ -10,18 +9,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Get your code from the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Install compiler
       - name: Install GCC
         run: sudo apt-get update && sudo apt-get install -y build-essential
 
-      # Step 3: Build your program
       - name: Build Hello World
         run: make
 
-      # Step 4: Run your program
       - name: Run Hello World
         run: ./hello
