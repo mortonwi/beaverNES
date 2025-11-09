@@ -26,4 +26,4 @@ jobs:
         run: cmake --build build --config Release
 
       - name: Run
-        run: ./build/beaverNES || echo "Program Executed"
+        run: ./build/beaverNES
