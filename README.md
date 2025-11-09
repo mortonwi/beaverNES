@@ -15,3 +15,4 @@ Oregon State Capstone (CS 46X) project revolving around NES Emulation.
 - Use Ctrl + Shift + P and select CMake: Select a Kit.
 - Select the MinGW-64 GCC compiler from the list.
 - Using the same menu, run CMake: Build.
+- Executable can be found in the generated 'build' folder.

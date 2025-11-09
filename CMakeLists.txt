@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.2.0)
+cmake_minimum_required(VERSION 3.31.6)
 project(beaverNES VERSION 0.0.2 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 17)
