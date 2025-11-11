@@ -67,21 +67,50 @@ int main(int argc, char *argv[]) {
         SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
         SDL_RenderFillRect(renderer, &menuButton);
 
-        // draw text on menu button
-        SDL_Surface *textSurface = TTF_RenderText_Solid(font, "Menu", blackTextColor);
-        SDL_Texture *textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+        // text for the menu button
+        SDL_Surface *menuTextSurface = TTF_RenderText_Solid(font, "Menu", blackTextColor);
+        SDL_Texture *menuTextTexture = SDL_CreateTextureFromSurface(renderer, menuTextSurface);
 
         // center button text
-        SDL_Rect textRect;
-        textRect.w = textSurface->w;
-        textRect.h = textSurface->h;
-        textRect.x = menuButton.x + (menuButton.w - textRect.w) / 2;
-        textRect.y = menuButton.y + (menuButton.h - textRect.h) / 2;
+        SDL_Rect menuTextRect;
+        menuTextRect.w = menuTextSurface->w;
+        menuTextRect.h = menuTextSurface->h;
+        menuTextRect.x = menuButton.x + (menuButton.w - menuTextRect.w) / 2;
+        menuTextRect.y = menuButton.y + (menuButton.h - menuTextRect.h) / 2;
 
-        SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+        SDL_RenderCopy(renderer, menuTextTexture, NULL, &menuTextRect);
+        SDL_FreeSurface(menuTextSurface);
+        SDL_DestroyTexture(menuTextTexture);
 
-        SDL_FreeSurface(textSurface);
-        SDL_DestroyTexture(textTexture);
+        // game view text
+        SDL_Surface *gameTextSurface = TTF_RenderText_Solid(font, "Game View", blackTextColor);
+        SDL_Texture *gameTextTexture = SDL_CreateTextureFromSurface(renderer, gameTextSurface);
+
+        // center gameview text
+        SDL_Rect gameTextRect;
+        gameTextRect.w = gameTextSurface->w;
+        gameTextRect.h = gameTextSurface->h;
+        gameTextRect.x = gameView.x + (gameView.w - gameTextRect.w) / 2;
+        gameTextRect.y = gameView.y + (gameView.h - gameTextRect.h) / 2;
+
+        SDL_RenderCopy(renderer, gameTextTexture, NULL, &gameTextRect);
+        SDL_FreeSurface(gameTextSurface);
+        SDL_DestroyTexture(gameTextTexture);
+
+        // border text
+        SDL_Surface *borderTextSurface = TTF_RenderText_Solid(font, "beaverNES", blackTextColor);
+        SDL_Texture *borderTextTexture = SDL_CreateTextureFromSurface(renderer, borderTextSurface);
+
+        // center gameview text
+        SDL_Rect borderTextRect;
+        borderTextRect.w = borderTextSurface->w;
+        borderTextRect.h = borderTextSurface->h;
+        borderTextRect.x = 10;
+        borderTextRect.y = 10;
+
+        SDL_RenderCopy(renderer, borderTextTexture, NULL, &borderTextRect);
+        SDL_FreeSurface(borderTextSurface);
+        SDL_DestroyTexture(borderTextTexture);
 
         // draw menu overlay if active
         if (menuVisible) {
