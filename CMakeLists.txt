@@ -9,9 +9,14 @@ find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIRS})
 
 # SDL2_TTF
-set(SDL2_TTF_INCLUDE_DIR $ENV{SDL2_TTF}/include/SDL2)
-set(SDL2_TTF_LIBRARY $ENV{SDL2_TTF}/lib/libSDL2_ttf.dll.a)
-include_directories(${SDL2_TTF_INCLUDE_DIR})
+if(WIN32)
+    set(SDL2_TTF_INCLUDE_DIR $ENV{SDL2_TTF}/include/SDL2)
+    set(SDL2_TTF_LIBRARY $ENV{SDL2_TTF}/lib/libSDL2_ttf.dll.a)
+    include_directories(${SDL2_TTF_INCLUDE_DIR})
+else()
+    find_package(SDL2_ttf REQUIRED)
+    include_directories(${SDL2_TTF_INCLUDE_DIRS})
+endif()
 
 add_executable(beaverNES main.c)
 
@@ -32,6 +37,5 @@ if(WIN32)
             $<TARGET_FILE_DIR:beaverNES>
     )
 else()
-    # Fix linux toolchain
-    target_link_libraries(beaverNES PRIVATE SDL2::SDL2 ${SDL2_TTF_LIBRARY})
+    target_link_libraries(beaverNES PRIVATE SDL2::SDL2 SDL2_ttf::SDL2_ttf)
 endif()
