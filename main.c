@@ -36,8 +36,8 @@ int main(int argc, char *argv[]) {
     SDL_Rect gameView = {144, 44, 512, 512};
     SDL_Rect menuButton = {700, 550, 80, 30};
 
-    // load font w/ size
-    TTF_Font *font = TTF_OpenFont("C:/Users/willm/OneDrive/Documents/CS 46X/beaverNES/beaverNES/fonts/Rubik/Rubik-Bold.ttf", 20);
+    // load font w/ size (Runs from build directory)
+    TTF_Font *font = TTF_OpenFont("../fonts/Rubik/Rubik-Bold.ttf", 20);
     SDL_Color blackTextColor = {0, 0, 0, 255};
 
     // main loop
@@ -68,19 +68,19 @@ int main(int argc, char *argv[]) {
         SDL_RenderFillRect(renderer, &menuButton);
 
         // text for the menu button
-        SDL_Surface *menuTextSurface = TTF_RenderText_Solid(font, "Menu", blackTextColor);
-        SDL_Texture *menuTextTexture = SDL_CreateTextureFromSurface(renderer, menuTextSurface);
+        SDL_Surface *menuButtonTextSurface = TTF_RenderText_Solid(font, "Menu", blackTextColor);
+        SDL_Texture *menuButtonTextTexture = SDL_CreateTextureFromSurface(renderer, menuButtonTextSurface);
 
         // center button text
-        SDL_Rect menuTextRect;
-        menuTextRect.w = menuTextSurface->w;
-        menuTextRect.h = menuTextSurface->h;
-        menuTextRect.x = menuButton.x + (menuButton.w - menuTextRect.w) / 2;
-        menuTextRect.y = menuButton.y + (menuButton.h - menuTextRect.h) / 2;
+        SDL_Rect menuButtonTextRect;
+        menuButtonTextRect.w = menuButtonTextSurface->w;
+        menuButtonTextRect.h = menuButtonTextSurface->h;
+        menuButtonTextRect.x = menuButton.x + (menuButton.w - menuButtonTextRect.w) / 2;
+        menuButtonTextRect.y = menuButton.y + (menuButton.h - menuButtonTextRect.h) / 2;
 
-        SDL_RenderCopy(renderer, menuTextTexture, NULL, &menuTextRect);
-        SDL_FreeSurface(menuTextSurface);
-        SDL_DestroyTexture(menuTextTexture);
+        SDL_RenderCopy(renderer, menuButtonTextTexture, NULL, &menuButtonTextRect);
+        SDL_FreeSurface(menuButtonTextSurface);
+        SDL_DestroyTexture(menuButtonTextTexture);
 
         // game view text
         SDL_Surface *gameTextSurface = TTF_RenderText_Solid(font, "Game View", blackTextColor);
@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
         SDL_Surface *borderTextSurface = TTF_RenderText_Solid(font, "beaverNES", blackTextColor);
         SDL_Texture *borderTextTexture = SDL_CreateTextureFromSurface(renderer, borderTextSurface);
 
-        // center gameview text
+        // border text
         SDL_Rect borderTextRect;
         borderTextRect.w = borderTextSurface->w;
         borderTextRect.h = borderTextSurface->h;
@@ -117,6 +117,21 @@ int main(int argc, char *argv[]) {
             SDL_SetRenderDrawColor(renderer, 164, 164, 164, 180); 
             SDL_Rect overlay = {200, 150, 400, 300};
             SDL_RenderFillRect(renderer, &overlay);
+
+            // menu window text
+            SDL_Surface *menuTextSurface = TTF_RenderText_Solid(font, "Menu Screen", blackTextColor);
+            SDL_Texture *menuTextTexture = SDL_CreateTextureFromSurface(renderer, menuTextSurface);
+
+            // menu window text
+            SDL_Rect menuTextRect;
+            menuTextRect.w = menuTextSurface->w;
+            menuTextRect.h = menuTextSurface->h;
+            menuTextRect.x = overlay.x + (overlay.w - menuTextRect.w) / 2;
+            menuTextRect.y = overlay.y + 20;
+
+            SDL_RenderCopy(renderer, menuTextTexture, NULL, &menuTextRect);
+            SDL_FreeSurface(menuTextSurface);
+            SDL_DestroyTexture(menuTextTexture);
         }
 
         SDL_RenderPresent(renderer);

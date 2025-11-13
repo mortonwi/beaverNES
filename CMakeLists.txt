@@ -8,9 +8,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIRS})
 
-# SDL2_TTL
-set(SDL2_TTF_INCLUDE_DIR "C:/Libraries/SDL2_ttf-2.24.0/x86_64-w64-mingw32/include/SDL2")
-set(SDL2_TTF_LIBRARY "C:/Libraries/SDL2_ttf-2.24.0/x86_64-w64-mingw32/lib/libSDL2_ttf.dll.a")
+# SDL2_TTF
+set(SDL2_TTF_INCLUDE_DIR $ENV{SDL2_TTF}/include/SDL2)
+set(SDL2_TTF_LIBRARY $ENV{SDL2_TTF}/lib/libSDL2_ttf.dll.a)
 include_directories(${SDL2_TTF_INCLUDE_DIR})
 
 add_executable(beaverNES main.c)
@@ -23,12 +23,12 @@ if(WIN32)
     # Copy DLLs to output directory
     add_custom_command(TARGET beaverNES POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "C:/Libraries/SDL2-2.32.10/lib/x64/SDL2.dll"
+            $ENV{SDL2}/lib/x64/SDL2.dll
             $<TARGET_FILE_DIR:beaverNES>
     )
     add_custom_command(TARGET beaverNES POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "C:/Libraries/SDL2_ttf-2.24.0/x86_64-w64-mingw32/bin/SDL2_ttf.dll"
+            $ENV{SDL2_TTF}/bin/SDL2_ttf.dll
             $<TARGET_FILE_DIR:beaverNES>
     )
 else()

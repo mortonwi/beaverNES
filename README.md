@@ -7,8 +7,10 @@ Oregon State Capstone (CS 46X) project revolving around NES Emulation.
 ## Dev Installation
 
 ### Windows VS Code
-- Download and extract SDL2 from this link: [SDL2](https://github.com/libsdl-org/SDL/releases/tag/release-2.32.10).
+- Download and extract SDL2-VC from this link: [SDL2](https://github.com/libsdl-org/SDL/releases/tag/release-2.32.10).
 - Add the SDL2-2.32.10/cmake folder as an environment or system variable called SDL2_DIR.
+- Add the SDL2-2.32.10 directory as an environment or system variable called SDL2
+- Download and extract SDL2_ttf-mingw from this link: [SDL2_ttf](https://github.com/libsdl-org/SDL_ttf/releases/tag/release-2.24.0)
 - Download and extract the latest UCRT GCC MinGW-64 from this link: [MinGW-64](https://winlibs.com/).
 - Add the mingw64/bin folder to system path.
 - In visual studio code, install the CMake and CMake Tools extensions. 
