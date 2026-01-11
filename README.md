@@ -1,7 +1,5 @@
 # beaverNES – Input & ROM Loading
 
-This branch focuses on implementing **ROM loading** and **input handling** for the beaverNES emulator.
-
 ---
 
 ## ROM Loading
