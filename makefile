@@ -1,13 +1,23 @@
-CC = gcc
-CFLAGS = -Wall -Werror
+CC      := gcc
+CFLAGS  := -std=c11 -Wall -Wextra -Wpedantic -O2
+LDFLAGS :=
 
-all: hello
+TARGET  := beavernes
+SRCS    := main.c rom_loader.c
+OBJS    := $(SRCS:.c=.o)
 
-hello: main.c
-	$(CC) $(CFLAGS) main.c -o hello
+all: $(TARGET)
 
-run: hello
-	./hello
+$(TARGET): $(OBJS)
+	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f hello
+	rm -f $(TARGET) $(OBJS)
+
+run: $(TARGET)
+	./$(TARGET)
+
+.PHONY: all clean run
