@@ -1,4 +1,4 @@
-// Source: 
+// Sources: 
 // https://www.nesdev.org/wiki/INES
 // https://www.copetti.org/writings/consoles/nes/
 
