@@ -2,9 +2,21 @@
 #include <stdbool.h>
 #include <SDL.h>
 #include <SDL_ttf.h>
+#include "ui/ui_button.h"
+
+// context for buttons
+typedef struct {
+    bool* menuVisible;
+} MenuContext;
+
+// toggle menu visibility
+void menuButtonClicked(void* ctx) {
+    MenuContext* context = (MenuContext*)ctx;
+    *(context->menuVisible) = !*(context->menuVisible);
+}
 
 int main(int argc, char *argv[]) {
-    // start SDL and SDL_ttf
+    // initialize SDL and SDL_ttf
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         printf("SDL_Init Error: %s\n", SDL_GetError());
         return 1;
@@ -16,10 +28,17 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // event to close the window
+    // create windows related events
     bool running = true;
-    bool menuVisible = false;
     SDL_Event event;
+
+    // colors
+    SDL_Color blackTextColor = {0, 0, 0, 255};
+    SDL_Color menuButtonColor = {200, 200, 200, 255};
+
+    // Setup context for menu button
+    bool menuVisible = false;
+    MenuContext menuCtx = { .menuVisible = &menuVisible };
 
     // create main emulator window
     SDL_Window *window = SDL_CreateWindow(
@@ -31,14 +50,14 @@ int main(int argc, char *argv[]) {
         0
     );
 
-    // create window objects
+    // create window elements
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    SDL_Rect gameView = {144, 44, 512, 512};
-    SDL_Rect menuButton = {700, 550, 80, 30};
 
     // load font w/ size (Runs from build directory)
     TTF_Font *font = TTF_OpenFont("../fonts/Rubik/Rubik-Bold.ttf", 20);
-    SDL_Color blackTextColor = {0, 0, 0, 255};
+
+    SDL_Rect gameView = {144, 44, 512, 512};
+    UiButton menuButton = ui_button_create(700, 550, 80, 30, "Menu", menuButtonColor, blackTextColor, menuButtonClicked, &menuCtx);
 
     // main loop
     while(running) {
@@ -46,13 +65,8 @@ int main(int argc, char *argv[]) {
             if (event.type == SDL_QUIT) {
                 running = 0;
             }
-            if (event.type == SDL_MOUSEBUTTONDOWN) {
-                int x = event.button.x, y = event.button.y;
-                if (x >= menuButton.x && x <= menuButton.x + menuButton.w &&
-                    y >= menuButton.y && y <= menuButton.y + menuButton.h) {
-                    menuVisible = !menuVisible;
-                }
-            }
+
+            ui_button_handle_event(&menuButton, &event);
         }
 
         // clear
@@ -63,24 +77,8 @@ int main(int argc, char *argv[]) {
         SDL_SetRenderDrawColor(renderer, 60, 60, 200, 255);
         SDL_RenderFillRect(renderer, &gameView);
 
-        // draw menu button
-        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
-        SDL_RenderFillRect(renderer, &menuButton);
-
-        // text for the menu button
-        SDL_Surface *menuButtonTextSurface = TTF_RenderText_Solid(font, "Menu", blackTextColor);
-        SDL_Texture *menuButtonTextTexture = SDL_CreateTextureFromSurface(renderer, menuButtonTextSurface);
-
-        // center button text
-        SDL_Rect menuButtonTextRect;
-        menuButtonTextRect.w = menuButtonTextSurface->w;
-        menuButtonTextRect.h = menuButtonTextSurface->h;
-        menuButtonTextRect.x = menuButton.x + (menuButton.w - menuButtonTextRect.w) / 2;
-        menuButtonTextRect.y = menuButton.y + (menuButton.h - menuButtonTextRect.h) / 2;
-
-        SDL_RenderCopy(renderer, menuButtonTextTexture, NULL, &menuButtonTextRect);
-        SDL_FreeSurface(menuButtonTextSurface);
-        SDL_DestroyTexture(menuButtonTextTexture);
+        // render menu button
+        ui_button_render(renderer, font, &menuButton);
 
         // game view text
         SDL_Surface *gameTextSurface = TTF_RenderText_Solid(font, "Game View", blackTextColor);

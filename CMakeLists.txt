@@ -18,7 +18,15 @@ else()
     include_directories(${SDL2_TTF_INCLUDE_DIRS})
 endif()
 
-add_executable(beaverNES main.c)
+# UI Subfolder
+set(UI_SRC
+    ui/ui_button.c
+)
+
+add_executable(beaverNES 
+    main.c 
+    ${UI_SRC}
+)
 
 # Different links for Windows (WIN32) vs Linux
 if(WIN32)
