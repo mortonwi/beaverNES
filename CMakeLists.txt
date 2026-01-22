@@ -21,6 +21,8 @@ endif()
 # UI Subfolder
 set(UI_SRC
     ui/ui_button.c
+    ui/ui_window.c
+    ui/ui_text.c
 )
 
 add_executable(beaverNES 
