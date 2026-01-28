@@ -32,20 +32,20 @@ bool get_flag(CPU *cpu, uint8_t flag) {
     return (cpu->P & flag) != 0;
 }
 
-static uint8_t read8(CPU *cpu, uint16_t addr) {
-    Bus *bus = (Bus*)cpu->bus;
-    return bus_read(bus, addr);
-}
-
-static void write8(CPU *cpu, uint16_t addr, uint8_t val) {
+void cpu_write8(CPU *cpu, uint16_t addr, uint8_t val) {
     Bus *bus = (Bus*)cpu->bus;
     bus_write(bus, addr, val);
 }
 
+uint8_t cpu_read8(CPU *cpu, uint16_t addr) {
+    Bus *bus = (Bus*)cpu->bus;
+    return bus_read(bus, addr);
+}
+
 void cpu_reset(CPU *cpu) {
     // typical reset vector at 0xFFFC
-    uint16_t lo = read8(cpu, 0xFFFC);
-    uint16_t hi = read8(cpu, 0xFFFD);
+    uint16_t lo = cpu_read8(cpu, 0xFFFC);
+    uint16_t hi = cpu_read8(cpu, 0xFFFD);
     cpu->PC = (hi << 8) | lo;
     cpu->SP = 0xFD;
     cpu->P = FLAG_U;

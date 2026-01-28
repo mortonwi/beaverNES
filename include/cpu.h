@@ -49,6 +49,9 @@ void cpu_reset(CPU *cpu); // sets registers, clears data, loads inital PC (progr
 void cpu_step(CPU *cpu); // executes a single CPU cycle
 void cpu_connect_bus(CPU *cpu, void *bus); // connects cpu to bus
 
+void cpu_write8(CPU *cpu, uint16_t addr, uint8_t val);
+uint8_t cpu_read8(CPU *cpu, uint16_t addr);
+
 // helpers to access status register
 void set_flag(CPU *cpu, uint8_t flag, bool value);
 bool get_flag(CPU *cpu, uint8_t flag);
