@@ -2,6 +2,34 @@
 #define APU_H
 
 #include <stdint.h>
+#include <stdbool.h>
+
+#define SAMPLING_FREQUENCY 48000
+#define BUFFER_SIZE 1024
+
+/**
+ * @brief Region NTSC vs PAL
+ */
+typedef enum {
+    NTSC,
+    PAL
+} Region;
+
+/**
+ * @brief Registers used to change APU state.
+ * 
+ *  Mapping comes from NESDEV documenation
+ */
+typedef struct {
+    uint8_t pulse1[4];          // $4000–$4003
+    uint8_t pulse2[4];          // $4004–$4007
+    uint8_t triangle[4];        // $4008–$400B
+    uint8_t noise[4];           // $400C–$400F
+    uint8_t dmc[4];             // $4010–$4013
+
+    uint8_t status;             // $4015 Special
+    uint8_t frame_counter;      // $4017 Special
+} Registers;
 
 /**
  * @brief Pulse Wave Channel
@@ -22,9 +50,11 @@ typedef struct {
     uint8_t sweep_shift;           // sweep shift count
 
     // Timer
-    uint16_t timer_reload_low;     // timer reload low bits
-    uint16_t timer_reload_high;    // timer reload high bits
-    uint16_t length_counter;       // length counter value
+    uint16_t timer_reload;          // reload value from registers
+    uint16_t timer_counter;         // internal countdown
+
+    uint8_t seq_pos;                // duty sequence (0-7)
+    uint16_t length_counter;        // internal length counter
 } Pulse;
 
 /**
@@ -76,14 +106,23 @@ typedef struct {
 /**
  * @brief Audio Processing Unit
  * 
- * Main structure for the audio processing unit. Includes all audio channels.
+ * Main structure for the audio processing unit. Includes all audio channels and registers.
  */
 typedef struct {
+    Region region;
+    Registers registers;
+
     Pulse pulse1;
     Pulse pulse2;
     Triangle triangle;
     Noise noise;
     Delta delta;
+
+    uint64_t cycles;        // APU cycle
 } APU;
+
+void init_apu(APU *apu, Region region);
+void pulse_tick(Pulse *p);
+uint8_t pulse_output(Pulse *p);
 
 #endif
