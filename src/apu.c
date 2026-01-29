@@ -1,4 +1,5 @@
 #include "apu.h"
+#include "stdio.h"
 
 /*
  * TODO:
@@ -101,6 +102,8 @@ void init_apu(APU *apu, Region region) {
     // apu->triangle = init_triangle();
     // apu->noise = init_noise();
     // apu->dmc = init_dmc();
+
+    printf("Initialized APU\n");
 }
 
 Pulse init_pulse(int id) {
@@ -122,6 +125,8 @@ Pulse init_pulse(int id) {
     pulse.timer_counter = 0;
     pulse.seq_pos = 0;
     pulse.length_counter = 0;
+
+    printf("Initialized Pulse Channel %d\n", pulse.id);
 
     return pulse;
 }
