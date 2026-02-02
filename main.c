@@ -15,6 +15,12 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    if (cart.header.mapper != 0) {
+    fprintf(stderr, "Unsupported mapper: %u\n", cart.header.mapper);
+    rom_free(&cart);
+    return 1;
+    }
+    
 printf("Loaded ROM!\n");
 printf("PRG banks: %u (%zu bytes)\n", cart.header.prg_rom_banks, cart.prg_size);
 printf("CHR banks: %u (%zu bytes)\n", cart.header.chr_rom_banks, cart.chr_size);
