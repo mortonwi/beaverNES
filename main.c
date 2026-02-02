@@ -15,7 +15,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-   printf("Loaded ROM!\n");
+printf("Loaded ROM!\n");
 printf("PRG banks: %u (%zu bytes)\n", cart.header.prg_rom_banks, cart.prg_size);
 printf("CHR banks: %u (%zu bytes)\n", cart.header.chr_rom_banks, cart.chr_size);
 printf("Mapper: %u\n", cart.header.mapper);
