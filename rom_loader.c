@@ -60,3 +60,92 @@ static bool parse_ines_header(const uint8_t h[INES_HEADER_SIZE], INesHeader *out
 
     return true;
 }
+
+void rom_free(Cartridge *cart) {
+    if (!cart) return;
+    free(cart->prg);
+    free(cart->chr);
+    free(cart->trainer);
+    memset(cart, 0, sizeof(*cart));
+}
+
+bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_msg_len) {
+    if (!path || !out_cart) {
+        set_err(err_msg, err_msg_len, "Invalid args to rom_load");
+        return false;
+    }
+
+    memset(out_cart, 0, sizeof(*out_cart));
+
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        set_err(err_msg, err_msg_len, "Failed to open ROM file");
+        return false;
+    }
+
+    uint8_t header[INES_HEADER_SIZE];
+    if (fread(header, 1, INES_HEADER_SIZE, f) != INES_HEADER_SIZE) {
+        fclose(f);
+        set_err(err_msg, err_msg_len, "Failed to read iNES header");
+        return false;
+    }
+
+    if (!parse_ines_header(header, &out_cart->header, err_msg, err_msg_len)) {
+        fclose(f);
+        return false;
+    }
+
+    // Optional trainer
+    if (out_cart->header.has_trainer) {
+        out_cart->trainer_size = 512;
+        out_cart->trainer = (uint8_t*)malloc(out_cart->trainer_size);
+        if (!out_cart->trainer) {
+            fclose(f);
+            set_err(err_msg, err_msg_len, "Out of memory allocating trainer");
+            return false;
+        }
+        if (fread(out_cart->trainer, 1, out_cart->trainer_size, f) != out_cart->trainer_size) {
+            fclose(f);
+            set_err(err_msg, err_msg_len, "Failed to read trainer");
+            rom_free(out_cart);
+            return false;
+        }
+    }
+
+    // PRG-ROM
+    out_cart->prg_size = (size_t)out_cart->header.prg_rom_banks * 16 * 1024;
+    out_cart->prg = (uint8_t*)malloc(out_cart->prg_size);
+    if (!out_cart->prg) {
+        fclose(f);
+        set_err(err_msg, err_msg_len, "Out of memory allocating PRG-ROM");
+        rom_free(out_cart);
+        return false;
+    }
+    if (fread(out_cart->prg, 1, out_cart->prg_size, f) != out_cart->prg_size) {
+        fclose(f);
+        set_err(err_msg, err_msg_len, "Failed to read PRG-ROM");
+        rom_free(out_cart);
+        return false;
+    }
+
+    // CHR-ROM (0 banks often means CHR-RAM; fine for now)
+    out_cart->chr_size = (size_t)out_cart->header.chr_rom_banks * 8 * 1024;
+    if (out_cart->chr_size > 0) {
+        out_cart->chr = (uint8_t*)malloc(out_cart->chr_size);
+        if (!out_cart->chr) {
+            fclose(f);
+            set_err(err_msg, err_msg_len, "Out of memory allocating CHR-ROM");
+            rom_free(out_cart);
+            return false;
+        }
+        if (fread(out_cart->chr, 1, out_cart->chr_size, f) != out_cart->chr_size) {
+            fclose(f);
+            set_err(err_msg, err_msg_len, "Failed to read CHR-ROM");
+            rom_free(out_cart);
+            return false;
+        }
+    }
+
+    fclose(f);
+    return true;
+}
