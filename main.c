@@ -23,7 +23,9 @@ int main(int argc, char **argv) {
     return 1;
     }
 
-    uint8_t v;
+   
+printf("Loaded ROM!\n");
+ uint8_t v;
 
     if (cart_cpu_read(&cart, 0x8000, &v)) {
         printf("PRG[0x8000] = 0x%02X\n", v);
@@ -33,7 +35,6 @@ int main(int argc, char **argv) {
         printf("PRG[0xC000] = 0x%02X\n", v);
 }
     
-printf("Loaded ROM!\n");
 printf("PRG banks: %u (%zu bytes)\n", cart.header.prg_rom_banks, cart.prg_size);
 printf("CHR banks: %u (%zu bytes)\n", cart.header.chr_rom_banks, cart.chr_size);
 printf("Mapper: %u\n", cart.header.mapper);
