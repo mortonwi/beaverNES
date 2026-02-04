@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include "rom_loader.h"
+#include "cartridge.h"
+
 
 int main(int argc, char **argv) {
     if (argc < 2) {
@@ -20,6 +22,16 @@ int main(int argc, char **argv) {
     rom_free(&cart);
     return 1;
     }
+
+    uint8_t v;
+
+    if (cart_cpu_read(&cart, 0x8000, &v)) {
+        printf("PRG[0x8000] = 0x%02X\n", v);
+}
+
+    if (cart_cpu_read(&cart, 0xC000, &v)) {
+        printf("PRG[0xC000] = 0x%02X\n", v);
+}
     
 printf("Loaded ROM!\n");
 printf("PRG banks: %u (%zu bytes)\n", cart.header.prg_rom_banks, cart.prg_size);

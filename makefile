@@ -3,7 +3,7 @@ CFLAGS  := -std=c11 -Wall -Wextra -Wpedantic -O2
 LDFLAGS :=
 
 TARGET  := beavernes
-SRCS    := main.c rom_loader.c
+SRCS := main.c rom_loader.c cartridge.c
 OBJS    := $(SRCS:.c=.o)
 
 all: $(TARGET)
