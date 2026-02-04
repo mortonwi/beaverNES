@@ -38,16 +38,23 @@ typedef struct {
  */
 typedef struct {
     uint8_t id;                    // pulse 1 or 2
+    uint8_t enabled;               // is the channel active?
 
     uint8_t duty_cycle;            // pulse wave duty (0–3)
     uint8_t length_halt;           // length counter halt / envelope loop
     uint8_t constant_volume;       // use constant volume instead of envelope
+    
     uint8_t envelope_volume;       // envelope volume or decay level
+    uint8_t envelope_divider;      
+    uint8_t envelope_decay;
+    uint8_t envelope_start;
 
     uint8_t sweep_enabled;         // sweep unit enabled
     uint8_t sweep_period;          // sweep period
     uint8_t sweep_negate;          // sweep negate flag
     uint8_t sweep_shift;           // sweep shift count
+    uint8_t sweep_divider;         // sweep divider
+    uint8_t sweep_reload;          // sweep reloader
 
     // Timer
     uint16_t timer_reload;          // reload value from registers
@@ -122,7 +129,7 @@ typedef struct {
 } APU;
 
 void init_apu(APU *apu, Region region);
-void pulse_tick(Pulse *p);
-uint8_t pulse_output(Pulse *p);
+float apu_tick(APU *apu, Region region);
+void apu_write(APU *apu, uint16_t addr, uint8_t value);
 
 #endif

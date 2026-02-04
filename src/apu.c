@@ -12,6 +12,10 @@
  *   [ ]  Implement DMC Channel
  */
 
+// test values
+#define NTSC_QUARTER_FRAME_CYCLES 7457
+#define NTSC_HALF_FRAME_CYCLES   14914
+
 // pulse sequencer duty cycle sequences
 static uint8_t duty[4][8] = {
     {0, 1, 0, 0, 0, 0, 0, 0},
@@ -68,10 +72,25 @@ static const uint16_t dmc_rate_pal[16] = {
 };
 
 // function headers
+void apu_reset(APU *apu);
+void apu_write(APU *apu, uint16_t addr, uint8_t value);
+void apu_read(APU *apu, uint16_t addr);
+int quarter_frame_tick(APU *apu);
+int half_frame_tick(APU *apu);
+
 Pulse init_pulse(int id);
 Triangle init_triangle();
 Noise init_noise();
 Delta init_dmc();
+
+void pulse_tick(Pulse *p);
+uint8_t pulse_output(Pulse *p);
+static uint8_t pulse_get_volume(Pulse *p);
+uint8_t pulse_output(Pulse *p);
+void clock_pulse_envelope(Pulse *p);
+uint16_t pulse_sweep_target(Pulse *p);
+void clock_pulse_sweep(Pulse *p);
+void clock_pulse_length(Pulse *p);
 
 /**
  * @brief Initialize APU and create sound channels
@@ -99,11 +118,175 @@ void init_apu(APU *apu, Region region) {
     // initialize sound channels
     apu->pulse1 = init_pulse(1);
     apu->pulse2 = init_pulse(2);
-    // apu->triangle = init_triangle();
-    // apu->noise = init_noise();
-    // apu->dmc = init_dmc();
+    apu->triangle = init_triangle();
+    apu->noise = init_noise();
+    apu->delta = init_dmc();
 
     printf("Initialized APU\n");
+}
+
+/**
+ * @brief AI assisted main APU func.
+ * 
+ * Executes for every APU tick. Handles each audio channel.
+ */
+float apu_tick(APU *apu, Region region) {
+    // advance pulse timers
+    pulse_tick(&apu->pulse1);
+    pulse_tick(&apu->pulse2);
+
+    // TODO: triangle_tick(&apu->triangle);
+    // TODO: noise_tick(&apu->noise);
+    // TODO: dmc_tick(&apu->dmc);
+
+    // check frame sequencer
+    if (quarter_frame_tick(apu)) {
+        clock_pulse_envelope(&apu->pulse1);
+        clock_pulse_envelope(&apu->pulse2);
+    }
+    if (half_frame_tick(apu)) {
+        clock_pulse_length(&apu->pulse1);
+        clock_pulse_length(&apu->pulse2);
+        clock_pulse_sweep(&apu->pulse1);
+        clock_pulse_sweep(&apu->pulse2);
+    }
+
+    // generate sample output
+    uint8_t sample1 = pulse_output(&apu->pulse1);
+    uint8_t sample2 = pulse_output(&apu->pulse2);
+
+    float pulse_out = 0.0f;
+    if (sample1 + sample2 > 0) {
+        pulse_out = 95.88f / ((8128.0f / (sample1 + sample2)) + 100.0f);
+    }
+
+    // TODO: send mixed_sample to SDL2 audio buffer
+    
+    // advance APU cycle
+    apu->cycles++;
+
+    return pulse_out;
+}
+
+/**
+ * @brief APU reset function
+ * 
+ * Limit to reseting the cycle count right now. Will handle 
+ * channel resets in the future. 
+ */
+void apu_reset(APU *apu) {
+    apu->cycles = 0;
+}
+
+/**
+ * @brief Handles APU register write operations.
+ */
+void apu_write(APU *apu, uint16_t addr, uint8_t value) {
+    printf("[APU WRITE] Addr: 0x%04X, Value: 0x%02X\n", addr, value);
+
+    switch (addr) {
+        case 0x4000:
+            apu->pulse1.duty_cycle = (value >> 6) & 0x3;
+            apu->pulse1.length_halt = (value >> 5) & 1;
+            apu->pulse1.constant_volume = (value >> 4) & 1;
+            apu->pulse1.envelope_volume = value & 0xF;
+
+            printf("  [Pulse1] duty_cycle=%d, length_halt=%d, constant_volume=%d, envelope_volume=%d\n",
+                apu->pulse1.duty_cycle,
+                apu->pulse1.length_halt,
+                apu->pulse1.constant_volume,
+                apu->pulse1.envelope_volume
+            );
+            break;
+
+        case 0x4001:
+            apu->pulse1.sweep_enabled = (value >> 7) & 1;
+            apu->pulse1.sweep_period = (value >> 4) & 7;
+            apu->pulse1.sweep_negate = (value >> 3) & 1;
+            apu->pulse1.sweep_shift = value & 7;
+            apu->pulse1.sweep_reload = 1;
+
+            printf("  [Pulse1 Sweep] enabled=%d, period=%d, negate=%d, shift=%d, reload=%d\n",
+                apu->pulse1.sweep_enabled,
+                apu->pulse1.sweep_period,
+                apu->pulse1.sweep_negate,
+                apu->pulse1.sweep_shift,
+                apu->pulse1.sweep_reload
+            );
+            break;
+
+        case 0x4002:
+            apu->pulse1.timer_reload = (apu->pulse1.timer_reload & 0x700) | value;
+
+            printf("  [Pulse1 Timer Low] timer_reload=%d\n", apu->pulse1.timer_reload);
+            break;
+
+        case 0x4003:
+            apu->pulse1.timer_reload = (apu->pulse1.timer_reload & 0xFF) | ((value & 0x7) << 8);
+            apu->pulse1.length_counter = length_table[(value >> 3) & 0x1F];
+            apu->pulse1.seq_pos = 0;
+            apu->pulse1.envelope_start = 1;
+
+            printf("  [Pulse1 Timer High] timer_reload=%d, length_counter=%d, seq_pos=%d, envelope_start=%d\n",
+                apu->pulse1.timer_reload,
+                apu->pulse1.length_counter,
+                apu->pulse1.seq_pos,
+                apu->pulse1.envelope_start
+            );
+            break;
+
+        case 0x4015:
+            apu->pulse1.enabled = value & 0x01;
+            apu->pulse2.enabled = (value >> 1) & 0x01;
+            if (!apu->pulse1.enabled) apu->pulse1.length_counter = 0;
+            if (!apu->pulse2.enabled) apu->pulse2.length_counter = 0;
+
+            printf("  [Status] pulse1_enabled=%d, pulse2_enabled=%d\n",
+                apu->pulse1.enabled,
+                apu->pulse2.enabled
+            );
+            break;
+
+        default:
+            printf("  [Warning] Unhandled APU write at 0x%04X\n", addr);
+            break;
+    }
+}
+
+/**
+ * @brief Handles APU register read operations.
+ */
+
+void apu_read(APU *apu, uint16_t addr) {
+
+}
+
+int quarter_frame_tick(APU *apu) {
+    uint64_t step =
+        (apu->region == 1) ? 8313 : 7457;   // PAL check
+
+    return (apu->cycles % step) == 0;
+}
+
+int half_frame_tick(APU *apu) {
+    uint64_t step =
+        (apu->region == 1) ? (8313 * 2) : (7457 * 2);   // PAL check
+
+    return (apu->cycles % step) == 0;
+}
+
+/**
+ * @brief Placeholder for future frame counter.
+ */
+void clock_frame_counter() {
+
+}
+
+/**
+ * @brief Placeholder for future clock length operations.
+ */
+void clock_length() {
+
 }
 
 Pulse init_pulse(int id) {
@@ -114,12 +297,18 @@ Pulse init_pulse(int id) {
     pulse.duty_cycle = 0;
     pulse.length_halt = 0;
     pulse.constant_volume = 0;
+    
     pulse.envelope_volume = 0;
+    pulse.envelope_start = 1;
+    pulse.envelope_divider = 0;
+    pulse.envelope_decay = 0;
 
     pulse.sweep_enabled = 0;
     pulse.sweep_period = 0;
     pulse.sweep_negate = 0;
     pulse.sweep_shift = 0;
+    pulse.sweep_divider = 0;
+    pulse.sweep_reload = 0;
 
     pulse.timer_reload = 0;
     pulse.timer_counter = 0;
@@ -131,10 +320,53 @@ Pulse init_pulse(int id) {
     return pulse;
 }
 
-// future todo
-Triangle init_triangle() {}
-Noise init_noise() {}
-Delta init_dmc() {}
+Triangle init_triangle() {
+    Triangle triangle;
+
+    triangle.length_halt = 0;
+    triangle.linear_reload = 0;
+
+    triangle.timer_reload_low = 0;
+    triangle.timer_reload_high = 0;
+    triangle.length_counter = 0;
+
+    printf("Initialized Triangle Channel\n");
+
+    return triangle;
+}
+
+Noise init_noise() {
+    Noise noise;
+
+    noise.length_halt = 0;
+    noise.constant_volume = 0;
+    noise.envelope_volume = 0;
+
+    noise.lfsr_mode = 0;
+    noise.noise_period = 0;
+    noise.length_counter = 0;
+
+    printf("Initialized Noise Channel\n");
+
+    return noise;
+}
+
+Delta init_dmc() {
+    Delta delta;
+
+    delta.irq_enable = 0;
+    delta.loop_enabled = 0;
+    delta.playback_rate = 0;
+
+    delta.sample_counter = 0;
+
+    delta.sample_address = 0;
+    delta.sample_length = 0;
+
+    printf("Initialized DMC Channel\n");
+
+    return delta;
+}
 
 /**
  * @brief Advances the pulse channel by one CPU cycle
@@ -145,11 +377,15 @@ Delta init_dmc() {}
  */
 void pulse_tick(Pulse *p) {
     if (p->timer_counter == 0) {
-        p->timer_counter = p->timer_reload;
+        p->timer_counter = p->timer_reload + 1;
         p->seq_pos = (p->seq_pos + 1) & 7;
     } else {
         p->timer_counter--;
     }
+}
+
+static uint8_t pulse_get_volume(Pulse *p) {
+    return p->constant_volume ? p->envelope_volume : p->envelope_decay;
 }
 
 /**
@@ -158,6 +394,88 @@ void pulse_tick(Pulse *p) {
  * Checks if the note should be playing and calculates output based on the duty sequence.
  */
 uint8_t pulse_output(Pulse *p) {
+    if (!p->enabled) return 0;
     if (p->length_counter == 0) return 0;
-    return duty[p->duty_cycle][p->seq_pos] ? p->envelope_volume : 0;
+    if (p->timer_reload < 8) return 0;
+
+    if (pulse_sweep_target(p) > 0x7FF)
+        return 0;
+
+    uint8_t vol = pulse_get_volume(p);
+
+    return duty[p->duty_cycle][p->seq_pos] ? vol : 0;
 }
+
+/**
+ * @brief Manage the pulse channels envelope.
+ * 
+ * AI assisted function based on established envelope understanding.
+ * Manages Pulse envelope by handling the envelope clock.
+ */
+void clock_pulse_envelope(Pulse *p) {
+    if (p->envelope_start) {
+        p->envelope_start = 0;
+        p->envelope_decay = 15;
+        p->envelope_divider = p->envelope_volume;
+    } else {
+        if (p->envelope_divider == 0) {
+            p->envelope_divider = p->envelope_volume;
+
+            if (p->envelope_decay > 0)
+                p->envelope_decay--;
+            else if (p->length_halt)
+                p->envelope_decay = 15;
+        } else {
+            p->envelope_divider--;
+        }
+    }
+}
+
+/**
+ * @brief Implements a very strange quirk that exists in the first pulse wave generator.
+ */
+uint16_t pulse_sweep_target(Pulse *p) {
+    uint16_t change = p->timer_reload >> p->sweep_shift;
+
+    if (p->sweep_negate) {
+        if (p->id == 1)
+            return p->timer_reload - change - 1;
+        else
+            return p->timer_reload - change;
+    }
+
+    return p->timer_reload + change;
+}
+
+/**
+ * @brief Handles internal pulse clock for sweep.
+ */
+void clock_pulse_sweep(Pulse *p) {
+    uint16_t target = pulse_sweep_target(p);
+
+    int mute = (p->timer_reload < 8) || (target > 0x7FF);
+
+    if (p->sweep_divider == 0 &&
+        p->sweep_enabled &&
+        p->sweep_shift > 0 &&
+        !mute) {
+
+        p->timer_reload = target;
+    }
+
+    if (p->sweep_divider == 0 || p->sweep_reload) {
+        p->sweep_divider = p->sweep_period;
+        p->sweep_reload = 0;
+    } else {
+        p->sweep_divider--;
+    }
+}
+
+/**
+ * @brief Steps through the pulse waves clock.
+ */
+void clock_pulse_length(Pulse *p) {
+    if (!p->length_halt && p->length_counter > 0)
+        p->length_counter--;
+}
+
