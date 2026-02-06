@@ -17,10 +17,10 @@ typedef struct {
     uint8_t oam[256];       // Sprite RAM
 
     // PPU registers
-    uint8_t ctrl;           // $2000
-    uint8_t mask;           // $2001
-    uint8_t status;         // $2002
-    uint8_t oam_addr;       // $2003
+    uint8_t ppuCtrl;           // $2000 PPUCTRL: NMI enable, increment mode, pattern table select
+    uint8_t ppuMask;           // $2001 PPUMASK: rendering enable, color emphasis
+    uint8_t ppuStatus;         // $2002 PPUSTATUS: vblank, sprite 0 hit, overflow (read clears vblank)
+    uint8_t oamAddr;       // $2003 OAMADDR: sprite memory address
 
     // Internal registers
     uint16_t vram_addr;
@@ -32,7 +32,7 @@ static PPU ppu;
 // power-up state
 void ppu_init(void) {
     memset(&ppu, 0, sizeof(PPU));
-    ppu.status = 0xA0; 
+    ppu.ppuStatus = 0xA0; 
 }
 
 
@@ -40,19 +40,19 @@ void ppu_init(void) {
 void ppu_write(uint16_t addr, uint8_t value) {
     switch (addr & 0x2007) {
         case 0x2000: // PPUCTRL
-            ppu.ctrl = value;
+            ppu.ppuCtrl = value;
             break;
 
         case 0x2001: // PPUMASK
-            ppu.mask = value;
+            ppu.ppuMask = value;
             break;
 
         case 0x2003: // OAMADDR
-            ppu.oam_addr = value;
+            ppu.oamAddr = value;
             break;
 
         case 0x2004: // OAMDATA
-            ppu.oam[ppu.oam_addr++] = value;
+            ppu.oam[ppu.oamAddr++] = value;
             break;
 
         case 0x2006: // PPUADDR
@@ -67,7 +67,7 @@ void ppu_write(uint16_t addr, uint8_t value) {
 
         case 0x2007: // PPUDATA
             ppu.vram[ppu.vram_addr & 0x3FFF] = value;
-            ppu.vram_addr += (ppu.ctrl & 0x04) ? 32 : 1;
+            ppu.vram_addr += (ppu.ppuCtrl & 0x04) ? 32 : 1;
             break;
     }
 }
@@ -77,14 +77,14 @@ uint8_t ppu_read(uint16_t addr) {
 
     switch (addr & 0x2007) {
         case 0x2002: // PPUSTATUS
-            result = ppu.status;
-            ppu.status &= ~0x80; // clear vblank
+            result = ppu.ppuStatus;
+            ppu.ppuStatus &= ~0x80; // clear vblank
             ppu.addr_latch = 0;
             break;
 
         case 0x2007: // PPUDATA
             result = ppu.vram[ppu.vram_addr & 0x3FFF];
-            ppu.vram_addr += (ppu.ctrl & 0x04) ? 32 : 1;
+            ppu.vram_addr += (ppu.ppuCtrl & 0x04) ? 32 : 1;
             break;
     }
 
@@ -104,7 +104,7 @@ void ppu_render_frame(uint32_t *framebuffer) {
     memset(framebuffer, 0, PPU_WIDTH * PPU_HEIGHT * sizeof(uint32_t));
 
     uint16_t nametable_base = 0x2000;
-    uint16_t pattern_base = (ppu.ctrl & 0x10) ? 0x1000 : 0x0000;
+    uint16_t pattern_base = (ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000;
     //loop through 32x30 grid
     for (int tile_y = 0; tile_y < 30; tile_y++) {
         for (int tile_x = 0; tile_x < 32; tile_x++) {
