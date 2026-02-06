@@ -70,6 +70,7 @@ void rom_free(Cartridge *cart) {
     memset(cart, 0, sizeof(*cart));
 }
 
+// Loads an NES ROM file from disk and initializes a Cartridge structure
 bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_msg_len) {
     if (!path || !out_cart) {
         set_err(err_msg, err_msg_len, "Invalid args to rom_load");
@@ -84,6 +85,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         return false;
     }
 
+    // Read the 16-byte iNES header
     uint8_t header[INES_HEADER_SIZE];
     if (fread(header, 1, INES_HEADER_SIZE, f) != INES_HEADER_SIZE) {
         fclose(f);
@@ -91,12 +93,13 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         return false;
     }
 
+    // Parse and validate the iNES header
     if (!parse_ines_header(header, &out_cart->header, err_msg, err_msg_len)) {
         fclose(f);
         return false;
     }
 
-    // Optional trainer (512 bytes)
+    // If the ROM has a trainer, read the 512-byte trainer data
     if (out_cart->header.has_trainer) {
         out_cart->trainer_size = 512;
         out_cart->trainer = (uint8_t*)malloc(out_cart->trainer_size);
@@ -106,6 +109,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
             return false;
         }
 
+        // Trainer data is located immediately after the 16-byte header
         if (fread(out_cart->trainer, 1, out_cart->trainer_size, f) != out_cart->trainer_size) {
             fclose(f);
             set_err(err_msg, err_msg_len, "Failed to read trainer");
@@ -114,7 +118,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         }
     }
 
-    // PRG-ROM
+    // --- PRG LOADING ---
     out_cart->prg_size = (size_t)out_cart->header.prg_rom_banks * 16 * 1024;
     out_cart->prg = (uint8_t*)malloc(out_cart->prg_size);
     if (!out_cart->prg) {
@@ -124,6 +128,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         return false;
     }
 
+    // PRG-ROM data is located immediately after the header and optional trainer
     if (fread(out_cart->prg, 1, out_cart->prg_size, f) != out_cart->prg_size) {
         fclose(f);
         set_err(err_msg, err_msg_len, "Failed to read PRG-ROM");
@@ -157,6 +162,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
             return false;
         }
 
+        // CHR-ROM data is located immediately after the PRG-ROM data
         if (fread(out_cart->chr, 1, out_cart->chr_size, f) != out_cart->chr_size) {
             fclose(f);
             set_err(err_msg, err_msg_len, "Failed to read CHR-ROM");

@@ -24,6 +24,7 @@ bool cart_cpu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
     return true;
 }
 
+// Read from cartridge via the PPU address space
 bool cart_ppu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
     if (!cart || !out) return false;
 
@@ -39,6 +40,7 @@ bool cart_ppu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
     return true;
 }
 
+// Write to cartridge via the PPU address space (only if CHR is RAM)
 bool cart_ppu_write(Cartridge *cart, uint16_t addr, uint8_t value) {
     if (!cart) return false;
 
