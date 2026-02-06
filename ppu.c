@@ -11,20 +11,29 @@ compile with: gcc -Wall -Wextra -DPPU_TEST ppu.c -o ppu_test
 #define PPU_WIDTH 256
 #define PPU_HEIGHT 240
 
-// PPU STRUCTURE
+// PPU Structure for state and registers
 typedef struct {
     uint8_t vram[0x4000];   // PPU address space
     uint8_t oam[256];       // Sprite RAM
 
     // PPU registers
-    uint8_t ppuCtrl;           // $2000 PPUCTRL: NMI enable, increment mode, pattern table select
-    uint8_t ppuMask;           // $2001 PPUMASK: rendering enable, color emphasis
+    uint8_t ppuCtrl;             // $2000 PPUCTRL: NMI enable, increment mode, pattern table select
+    uint8_t ppuMask;            // $2001 PPUMASK: rendering enable, color emphasis
     uint8_t ppuStatus;         // $2002 PPUSTATUS: vblank, sprite 0 hit, overflow (read clears vblank)
-    uint8_t oamAddr;       // $2003 OAMADDR: sprite memory address
+    uint8_t oamAddr;          // $2003 OAMADDR: sprite memory address
+    uint8_t oamData;         // $2004 OAMDATA: read/write sprite data
+    uint8_t ppuScroll;      // $2005 PPUSCROLL: scroll position (write twice)
+    uint8_t ppuAddr;       // $2006 PPUADDR: VRAM address (write twice)
+    uint8_t ppuData;      // $2007 PPUDATA: VRAM data read/write
+    uint8_t oamDMA;      // $4014 OAMDMA: DMA transfer to OAM (write only)
 
-    // Internal registers
-    uint16_t vram_addr;
-    uint8_t addr_latch;
+    // Internal PPU state
+    uint16_t vramAddress;         // v: Current VRAM address (15 bits)
+    uint8_t tempVramAddress;     // t: Temporary VRAM address (15 bits)
+    uint8_t  xScroll;           // x: Fine X scroll (3 bits)
+    uint8_t  wToggle;          // w: Write toggle for $2005/$2006
+    uint8_t  readBuffer;      // Buffered read for PPUDATA
+
 } PPU;
 
 static PPU ppu;
@@ -56,18 +65,18 @@ void ppu_write(uint16_t addr, uint8_t value) {
             break;
 
         case 0x2006: // PPUADDR
-            if (!ppu.addr_latch) {
-                ppu.vram_addr = (value & 0x3F) << 8;
-                ppu.addr_latch = 1;
+            if (!ppu.tempVramAddress) {
+                ppu.vramAddress = (value & 0x3F) << 8;
+                ppu.tempVramAddress = 1;
             } else {
-                ppu.vram_addr |= value;
-                ppu.addr_latch = 0;
+                ppu.vramAddress |= value;
+                ppu.tempVramAddress = 0;
             }
             break;
 
         case 0x2007: // PPUDATA
-            ppu.vram[ppu.vram_addr & 0x3FFF] = value;
-            ppu.vram_addr += (ppu.ppuCtrl & 0x04) ? 32 : 1;
+            ppu.vram[ppu.vramAddress & 0x3FFF] = value;
+            ppu.vramAddress += (ppu.ppuCtrl & 0x04) ? 32 : 1;
             break;
     }
 }
@@ -79,12 +88,12 @@ uint8_t ppu_read(uint16_t addr) {
         case 0x2002: // PPUSTATUS
             result = ppu.ppuStatus;
             ppu.ppuStatus &= ~0x80; // clear vblank
-            ppu.addr_latch = 0;
+            ppu.tempVramAddress = 0;
             break;
 
         case 0x2007: // PPUDATA
-            result = ppu.vram[ppu.vram_addr & 0x3FFF];
-            ppu.vram_addr += (ppu.ppuCtrl & 0x04) ? 32 : 1;
+            result = ppu.vram[ppu.vramAddress & 0x3FFF];
+            ppu.vramAddress += (ppu.ppuCtrl & 0x04) ? 32 : 1;
             break;
     }
 
