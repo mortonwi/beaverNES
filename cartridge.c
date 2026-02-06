@@ -24,22 +24,32 @@ bool cart_cpu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
     return true;
 }
 
-// Read from cartridge via the PPU address space
 bool cart_ppu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
     if (!cart || !out) return false;
 
-    // Mapper 0 (NROM)
     // Mapper 0: PPU CHR window is $0000-$1FFF
     if (addr >= 0x2000) return false;
 
-    // If CHR-ROM exists, read it.
-    if (cart->chr_size == 0 || !cart->chr) return false;
-    if (cart->chr_size != 8192) {
-        // Mapper 0 CHR-ROM is typically 8KiB
-        return false;
-    }
+    if (!cart->chr || cart->chr_size == 0) return false;
 
-    // Direct mapping from PPU address to CHR offset
+    // For Mapper 0, CHR is either 8 KiB ROM or 8 KiB RAM
+    if (cart->chr_size != 8192) return false;
+
     *out = cart->chr[addr];
+    return true;
+}
+
+bool cart_ppu_write(Cartridge *cart, uint16_t addr, uint8_t value) {
+    if (!cart) return false;
+
+    // Mapper 0: CHR window is $0000-$1FFF
+    if (addr >= 0x2000) return false;
+
+    // Only writable if CHR is RAM
+    if (!cart->chr_is_ram) return false;
+
+    if (!cart->chr || cart->chr_size != 8192) return false;
+
+    cart->chr[addr] = value;
     return true;
 }
