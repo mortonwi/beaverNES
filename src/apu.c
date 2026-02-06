@@ -4,7 +4,7 @@
 /*
  * TODO:
  *   [X]  Implement Required Static Tables
- *   [ ]  Implement Pulse Wave Generators
+ *   [X]  Implement Pulse Wave Generators
  *   [ ]  Implement Triangle Wave Generators
  *   [ ]  Implement Noise Wave Generator
  *   [ ]  Set up APU and channel init
@@ -179,7 +179,9 @@ void apu_reset(APU *apu) {
 }
 
 /**
- * @brief Handles APU register write operations.
+ * @brief Handles APU register write operations based on the register table.
+ * 
+ * Documentation for this section is on the Wiki.
  */
 void apu_write(APU *apu, uint16_t addr, uint8_t value) {
     printf("[APU WRITE] Addr: 0x%04X, Value: 0x%02X\n", addr, value);
@@ -235,6 +237,56 @@ void apu_write(APU *apu, uint16_t addr, uint8_t value) {
             );
             break;
 
+        case 0x4004:
+            apu->pulse2.duty_cycle = (value >> 6) & 0x3;
+            apu->pulse2.length_halt = (value >> 5) & 1;
+            apu->pulse2.constant_volume = (value >> 4) & 1;
+            apu->pulse2.envelope_volume = value & 0xF;
+
+            printf("  [Pulse2] duty_cycle=%d, length_halt=%d, constant_volume=%d, envelope_volume=%d\n",
+                apu->pulse2.duty_cycle,
+                apu->pulse2.length_halt,
+                apu->pulse2.constant_volume,
+                apu->pulse2.envelope_volume
+            );
+            break;
+
+        case 0x4005:
+            apu->pulse2.sweep_enabled = (value >> 7) & 1;
+            apu->pulse2.sweep_period = (value >> 4) & 7;
+            apu->pulse2.sweep_negate = (value >> 3) & 1;
+            apu->pulse2.sweep_shift = value & 7;
+            apu->pulse2.sweep_reload = 1;
+
+            printf("  [Pulse2 Sweep] enabled=%d, period=%d, negate=%d, shift=%d, reload=%d\n",
+                apu->pulse2.sweep_enabled,
+                apu->pulse2.sweep_period,
+                apu->pulse2.sweep_negate,
+                apu->pulse2.sweep_shift,
+                apu->pulse2.sweep_reload
+            );
+            break;
+
+        case 0x4006:
+            apu->pulse2.timer_reload = (apu->pulse2.timer_reload & 0x700) | value;
+
+            printf("  [Pulse1 Timer Low] timer_reload=%d\n", apu->pulse2.timer_reload);
+            break;
+
+        case 0x4007:
+            apu->pulse2.timer_reload = (apu->pulse2.timer_reload & 0xFF) | ((value & 0x7) << 8);
+            apu->pulse2.length_counter = length_table[(value >> 3) & 0x1F];
+            apu->pulse2.seq_pos = 0;
+            apu->pulse2.envelope_start = 1;
+
+            printf("  [Pulse2 Timer High] timer_reload=%d, length_counter=%d, seq_pos=%d, envelope_start=%d\n",
+                apu->pulse2.timer_reload,
+                apu->pulse2.length_counter,
+                apu->pulse2.seq_pos,
+                apu->pulse2.envelope_start
+            );
+            break;
+
         case 0x4015:
             apu->pulse1.enabled = value & 0x01;
             apu->pulse2.enabled = (value >> 1) & 0x01;
@@ -256,7 +308,6 @@ void apu_write(APU *apu, uint16_t addr, uint8_t value) {
 /**
  * @brief Handles APU register read operations.
  */
-
 void apu_read(APU *apu, uint16_t addr) {
 
 }

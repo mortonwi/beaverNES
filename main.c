@@ -13,26 +13,24 @@ int main() {
     // init apu with NTSC
     init_apu(&apu, REGION);
     
-    // test pulse1 (made with AI)
-    apu_write(&apu, 0x4015, 0x01);  // enable pulse1
-    apu_write(&apu, 0x4000, 0x30);  // duty=0, constant volume=1, volume=0
+    // test pulse wave
+    apu_write(&apu, 0x4015, 0x03);  // enable both pulse waves
+    
+    // pulse1
+    apu_write(&apu, 0x4000, 0x3F);  // duty=0, constant volume=1, volume=0
     apu_write(&apu, 0x4002, 0x0F);  // low
     apu_write(&apu, 0x4003, 0x01);  // high
-    apu_write(&apu, 0x4000, 0x3F);  // constant volume = 15
-    
-    // get buffer from audio output
-    bool success = false;
-    
-    for (int i = 0; i < 2048; i++) {
-        float sample = apu_tick(&apu, REGION);
-        if (sample > 0.0f) {
-            printf("Sample generated after %d ticks: %f\n", i, sample);
-            success = true;
-            break;
-        }
-    }
 
-    if (!success) {
+    // pulse2
+    apu_write(&apu, 0x4004, 0x3F);  // duty=0, constant volume=1, volume=0
+    apu_write(&apu, 0x4006, 0x0F);  // low
+    apu_write(&apu, 0x4007, 0x01);  // high
+
+    // get buffer from audio output
+    float sample = apu_tick(&apu, REGION);
+    if (sample > 0.0f) {
+        printf("Sample generated : %f\n", sample);
+    } else {
         printf("Unable to generate non-zero audio sample\n");
     }
 
