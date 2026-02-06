@@ -69,6 +69,8 @@ typedef struct {
     uint8_t *chr;
     size_t chr_size;
 
+    bool chr_is_ram; // true if chr is RAM, false if it's ROM
+
     uint8_t *trainer;   // optional 512 bytes
     size_t trainer_size;
 } Cartridge;
@@ -81,7 +83,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
 
 /*
 Frees all dynamically allocated memory associated with a Cartridge.
-This should be called when unloading a ROM or shutting downt he emulator
+This should be called when unloading a ROM or shutting down the emulator
 */
 void rom_free(Cartridge *cart);
 
