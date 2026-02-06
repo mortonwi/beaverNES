@@ -29,15 +29,14 @@ typedef struct {
 
 static PPU ppu;
 
-
+// power-up state
 void ppu_init(void) {
     memset(&ppu, 0, sizeof(PPU));
-    ppu.status = 0xA0; // power-up state
+    ppu.status = 0xA0; 
 }
 
 
 // REGISTER ACCESS
-
 void ppu_write(uint16_t addr, uint8_t value) {
     switch (addr & 0x2007) {
         case 0x2000: // PPUCTRL
@@ -92,24 +91,37 @@ uint8_t ppu_read(uint16_t addr) {
     return result;
 }
 
-//BACKGROUND RENDERER
+/*
+ BACKGROUND RENDERER (PROTOTYPE)
+This function is a temporary background renderer used for testing.
+It does NOT emulate real NES timing, scanlines, or VBlank behavior.
+For now it Validates VRAM layout, pattern table tile decoding, nametable → tile → pixel mapping
+Iterates over the 32x30 tile grid
+For each tile, read its pattern data (8x8 pixels), convert pattern bits into pixels in a framebuffer
+This will be replaced later by a cycle-accurate PPU renderer.
+*/
 void ppu_render_frame(uint32_t *framebuffer) {
     memset(framebuffer, 0, PPU_WIDTH * PPU_HEIGHT * sizeof(uint32_t));
 
     uint16_t nametable_base = 0x2000;
     uint16_t pattern_base = (ppu.ctrl & 0x10) ? 0x1000 : 0x0000;
-
+    //loop through 32x30 grid
     for (int tile_y = 0; tile_y < 30; tile_y++) {
         for (int tile_x = 0; tile_x < 32; tile_x++) {
+
+            //read title index from nametable
             uint8_t tile_index =
                 ppu.vram[nametable_base + tile_y * 32 + tile_x];
-
+            
+            //each tile is 16 bytes in the pattern table
             uint16_t tile_addr = pattern_base + tile_index * 16;
 
+            //each tile with a height of 8 pixels
             for (int row = 0; row < 8; row++) {
                 uint8_t lo = ppu.vram[tile_addr + row];
                 uint8_t hi = ppu.vram[tile_addr + row + 8];
 
+                //each tile 8 pixels wide
                 for (int col = 0; col < 8; col++) {
                     uint8_t bit = 7 - col;
                     uint8_t color =
@@ -129,7 +141,10 @@ void ppu_render_frame(uint32_t *framebuffer) {
 }
 
 
-// PPU Test
+/*
+Ttest main function populates VRAM with a pattern and nametable data to validate 
+background tile decoding logic without requiring a CPU, ROM, or display output.
+*/
 #ifdef PPU_TEST
 int main(void) {
     uint32_t framebuffer[PPU_WIDTH * PPU_HEIGHT];
