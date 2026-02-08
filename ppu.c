@@ -45,11 +45,15 @@ void ppu_init(void) {
 }
 
 
-// REGISTER ACCESS
+// Read REGISTER address assignments and behavior.
 void ppu_write(uint16_t addr, uint8_t value) {
     switch (addr & 0x2007) {
         case 0x2000: // PPUCTRL
             ppu.ppuCtrl = value;
+            // Update nametable select bits in temp VRAM address (t)
+            //store two bits from $2000 into temp VRAM address to be used later.
+            ppu.tempVramAddress = (ppu.tempVramAddress & 0xF3FF) | ((value & 0x03) << 10);
+            // NMI enable bit 7 is stored but not acted on yet
             break;
 
         case 0x2001: // PPUMASK
@@ -172,7 +176,27 @@ int main(void) {
     }
 
     ppu_render_frame(framebuffer);
-    printf("PPU prototype ran successfully.\n");
+    printf("PPU prototype running successfully.\n");
+
+    // --- Test PPUCTRL VRAM increment behavior ---
+    printf("Starting PPUCTRL $2000 VRAM increment test...\n");
+    // Set VRAM address to $2000
+    ppu_write(0x2006, 0x20); // high byte
+    ppu_write(0x2006, 0x00); // low byte
+
+    // Case 1: increment by 1
+    ppu_write(0x2000, 0x00); // bit 2 = 0
+    ppu_write(0x2007, 0xAA);
+    printf("VRAM addr after +1 write: %04X\n", ppu.vramAddress);
+
+    // Reset address
+    ppu_write(0x2006, 0x20);
+    ppu_write(0x2006, 0x00);
+
+    // Case 2: increment by 32
+    ppu_write(0x2000, 0x04); // bit 2 = 1
+    ppu_write(0x2007, 0xBB);
+    printf("VRAM addr after +32 write: %04X\n", ppu.vramAddress);
     return 0;
 }
 #endif
