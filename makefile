@@ -19,4 +19,12 @@ run: $(TARGET)
 clean:
 	rm -f $(SRC)/*.o $(TARGET)
 
+.PHONY: test
+test:
+	mkdir -p $(SRC)/tests/bin
+	@for f in $(SRC)/tests/*.c; do \
+		name=$$(basename $$f .c); \
+		$(CC) $(CFLAGS) $$f $(SRC)/cpu.c $(SRC)/bus.c $(SRC)/memory.c $(SRC)/opcodes.c -o $(SRC)/tests/bin/$$name || exit 1; \
+		$(SRC)/tests/bin/$$name || exit 1; \
+	done
 
