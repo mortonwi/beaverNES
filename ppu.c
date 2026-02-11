@@ -115,10 +115,23 @@ uint8_t ppu_read(uint16_t addr) {
             ppu.w = 0;
             break;
 
-        case 0x2007: // PPUDATA
-            result = ppu.vram[ppu.v & 0x3FFF];
+        case 0x2007: { // PPUDATA read
+            uint16_t addr = ppu.v & 0x3FFF;
+
+            if (addr < 0x3F00) {
+                // buffered read
+                result = ppu.buffer;
+                ppu.buffer = ppu.vram[addr];
+            } else {
+                // palette reads are immediate
+                result = ppu.vram[addr];
+                ppu.buffer = ppu.vram[addr - 0x1000]; // mirrors from $2F00
+            }
+
             ppu.v += (ppu.ppuCtrl & 0x04) ? 32 : 1;
             break;
+        }
+
     }
 
     return result;
@@ -217,6 +230,40 @@ int main(void) {
     ppu_write(0x2000, 0x04); // bit 2 = 1
     ppu_write(0x2007, 0xBB);
     printf("VRAM addr after +32 write: %04X\n", ppu.v);
+
+    // --- Test PPUADDR latch reset ---
+    printf("Testing PPUADDR latch reset...\n");
+
+    ppu_write(0x2006, 0x3F); // high
+    ppu_read(0x2002);        // reset w
+    ppu_write(0x2006, 0x00); // should be high again
+    ppu_write(0x2006, 0x10); // low
+
+    printf("PPU v after reset+latch: %04X (expected 0010)\n", ppu.v);
+
+    // --- Test PPUSCROLL ---
+    printf("Testing PPUSCROLL...\n");
+    ppu_read(0x2002);        // reset w
+
+    ppu_write(0x2005, 0x15); // X scroll
+    ppu_write(0x2005, 0x2A); // Y scroll
+
+    printf("t=%04X x=%d\n", ppu.t, ppu.x);
+
+    // --- Test PPUDATA buffering ---
+    printf("Testing PPUDATA buffering...\n");
+
+    ppu.vram[0x2000] = 0x11;
+    ppu.vram[0x2001] = 0x22;
+
+    ppu_write(0x2006, 0x20);
+    ppu_write(0x2006, 0x00);
+
+    uint8_t r1 = ppu_read(0x2007);
+    uint8_t r2 = ppu_read(0x2007);
+
+    printf("expect junk, then 11; Buffered reads: %02X then %02X \n", r1, r2);
+
     return 0;
 }
 #endif
