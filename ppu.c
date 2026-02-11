@@ -14,7 +14,7 @@ compile with: gcc -Wall -Wextra -DPPU_TEST ppu.c -o ppu_test
 // PPU Structure for state and registers
 typedef struct {
     uint8_t vram[0x4000];   // PPU address space
-    uint8_t oam[256];       // Sprite RAM
+    uint8_t oam[256];      // Sprite RAM
 
     // PPU registers
     uint8_t ppuCtrl;             // $2000 PPUCTRL: NMI enable, increment mode, pattern table select
@@ -28,11 +28,11 @@ typedef struct {
     uint8_t oamDMA;      // $4014 OAMDMA: DMA transfer to OAM (write only)
 
     // Internal PPU state
-    uint16_t vramAddress;         // v: Current VRAM address (15 bits)
-    uint8_t tempVramAddress;     // t: Temporary VRAM address (15 bits)
-    uint8_t  xScroll;           // x: Fine X scroll (3 bits)
-    uint8_t  wToggle;          // w: Write toggle for $2005/$2006
-    uint8_t  readBuffer;      // Buffered read for PPUDATA
+    uint16_t vramAddress;   // v: Current VRAM address (15 bits)
+    uint16_t t;            // t: Temporary VRAM address (15 bits)
+    uint8_t  x;           // x: Fine X scroll (3 bits)
+    uint8_t  w;          // w: Write toggle for $2005/$2006
+    uint8_t  buffer;    // Buffered read for PPUDATA
 
 } PPU;
 
@@ -52,7 +52,7 @@ void ppu_write(uint16_t addr, uint8_t value) {
             ppu.ppuCtrl = value;
             // Update nametable select bits in temp VRAM address (t)
             //store two bits from $2000 into temp VRAM address to be used later.
-            ppu.tempVramAddress = (ppu.tempVramAddress & 0xF3FF) | ((value & 0x03) << 10);
+            ppu.t = (ppu.t & 0xF3FF) | ((value & 0x03) << 10);
             // NMI enable bit 7 is stored but not acted on yet
             break;
 
@@ -69,12 +69,12 @@ void ppu_write(uint16_t addr, uint8_t value) {
             break;
 
         case 0x2006: // PPUADDR
-            if (!ppu.tempVramAddress) {
+            if (!ppu.t) {
                 ppu.vramAddress = (value & 0x3F) << 8;
-                ppu.tempVramAddress = 1;
+                ppu.t = 1;
             } else {
                 ppu.vramAddress |= value;
-                ppu.tempVramAddress = 0;
+                ppu.t = 0;
             }
             break;
 
@@ -92,7 +92,7 @@ uint8_t ppu_read(uint16_t addr) {
         case 0x2002: // PPUSTATUS
             result = ppu.ppuStatus;
             ppu.ppuStatus &= ~0x80; // clear vblank
-            ppu.tempVramAddress = 0;
+            ppu.t = 0;
             break;
 
         case 0x2007: // PPUDATA
