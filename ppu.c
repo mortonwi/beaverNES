@@ -28,7 +28,7 @@ typedef struct {
     uint8_t oamDMA;      // $4014 OAMDMA: DMA transfer to OAM (write only)
 
     // Internal PPU state
-    uint16_t vramAddress;   // v: Current VRAM address (15 bits)
+    uint16_t v;   // v: Current VRAM address (15 bits)
     uint16_t t;            // t: Temporary VRAM address (15 bits)
     uint8_t  x;           // x: Fine X scroll (3 bits)
     uint8_t  w;          // w: Write toggle for $2005/$2006
@@ -68,19 +68,39 @@ void ppu_write(uint16_t addr, uint8_t value) {
             ppu.oam[ppu.oamAddr++] = value;
             break;
 
-        case 0x2006: // PPUADDR
-            if (!ppu.t) {
-                ppu.vramAddress = (value & 0x3F) << 8;
-                ppu.t = 1;
+        case 0x2005: // PPUSCROLL
+            if (!ppu.w) {
+                // First write: horizontal scroll
+                ppu.x = value & 0x07;                 // fine X (3 bits)
+                ppu.t = (ppu.t & 0x7FE0)              // keep coarse Y + fine Y + NT
+                    | ((value >> 3) & 0x1F);        // coarse X
+                ppu.w = 1;
             } else {
-                ppu.vramAddress |= value;
-                ppu.t = 0;
+                // Second write: vertical scroll
+                ppu.t = (ppu.t & 0x0C1F)              // keep coarse X + NT
+                    | ((value & 0x07) << 12)        // fine Y
+                    | ((value & 0xF8) << 2);        // coarse Y
+                ppu.w = 0;
             }
             break;
 
+        case 0x2006: // PPUADDR
+            if (!ppu.w) {
+                // First write: high byte (bits 8–13)
+                ppu.t = (ppu.t & 0x00FF) | ((value & 0x3F) << 8);
+                ppu.w = 1;
+            } else {
+                // Second write: low byte, then copy t → v
+                ppu.t = (ppu.t & 0xFF00) | value;
+                ppu.v = ppu.t;
+                ppu.w = 0;
+            }
+            break;
+
+
         case 0x2007: // PPUDATA
-            ppu.vram[ppu.vramAddress & 0x3FFF] = value;
-            ppu.vramAddress += (ppu.ppuCtrl & 0x04) ? 32 : 1;
+            ppu.vram[ppu.v & 0x3FFF] = value;
+            ppu.v += (ppu.ppuCtrl & 0x04) ? 32 : 1;
             break;
     }
 }
@@ -92,12 +112,12 @@ uint8_t ppu_read(uint16_t addr) {
         case 0x2002: // PPUSTATUS
             result = ppu.ppuStatus;
             ppu.ppuStatus &= ~0x80; // clear vblank
-            ppu.t = 0;
+            ppu.w = 0;
             break;
 
         case 0x2007: // PPUDATA
-            result = ppu.vram[ppu.vramAddress & 0x3FFF];
-            ppu.vramAddress += (ppu.ppuCtrl & 0x04) ? 32 : 1;
+            result = ppu.vram[ppu.v & 0x3FFF];
+            ppu.v += (ppu.ppuCtrl & 0x04) ? 32 : 1;
             break;
     }
 
@@ -187,7 +207,7 @@ int main(void) {
     // Case 1: increment by 1
     ppu_write(0x2000, 0x00); // bit 2 = 0
     ppu_write(0x2007, 0xAA);
-    printf("VRAM addr after +1 write: %04X\n", ppu.vramAddress);
+    printf("VRAM addr after +1 write: %04X\n", ppu.v);
 
     // Reset address
     ppu_write(0x2006, 0x20);
@@ -196,7 +216,7 @@ int main(void) {
     // Case 2: increment by 32
     ppu_write(0x2000, 0x04); // bit 2 = 1
     ppu_write(0x2007, 0xBB);
-    printf("VRAM addr after +32 write: %04X\n", ppu.vramAddress);
+    printf("VRAM addr after +32 write: %04X\n", ppu.v);
     return 0;
 }
 #endif
