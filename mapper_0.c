@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// --- CPU READ (PRG) ---
+//CPU READ (PRG)
 static bool m0_cpu_read(Cartridge *cart, uint16_t addr, uint8_t *out) {
     if (!cart || !out) return false;
 
@@ -24,14 +24,14 @@ static bool m0_cpu_read(Cartridge *cart, uint16_t addr, uint8_t *out) {
 
     // If 16 KiB PRG, mirror $C000-$FFFF onto $8000-$BFFF
     if (cart->prg_size == 16384) {
-        offset &= 0x3FFF; // same as % 16384 but faster/clear for power-of-two
+        offset &= 0x3FFF;
     }
 
     *out = cart->prg[offset];
     return true;
 }
 
-// Mapper 0 has no PRG bank switching; CPU writes to $8000+ typically do nothing
+// Mapper 0 has no PRG bank switching
 static bool m0_cpu_write(Cartridge *cart, uint16_t addr, uint8_t value) {
     (void)cart;
     (void)addr;
@@ -39,7 +39,7 @@ static bool m0_cpu_write(Cartridge *cart, uint16_t addr, uint8_t value) {
     return false;
 }
 
-// --- PPU READ (CHR) ---
+//PPU READ (CHR)
 static bool m0_ppu_read(Cartridge *cart, uint16_t addr, uint8_t *out) {
     if (!cart || !out) return false;
 
@@ -47,14 +47,13 @@ static bool m0_ppu_read(Cartridge *cart, uint16_t addr, uint8_t *out) {
     if (addr >= 0x2000) return false;
     if (!cart->chr || cart->chr_size == 0) return false;
 
-    // For basic NROM we expect 8 KiB CHR (ROM or RAM)
     if (cart->chr_size != 8192) return false;
 
     *out = cart->chr[addr];
     return true;
 }
 
-// --- PPU WRITE (CHR-RAM only) ---
+// PPU WRITE (CHR-RAM only)
 static bool m0_ppu_write(Cartridge *cart, uint16_t addr, uint8_t value) {
     if (!cart) return false;
 
@@ -69,10 +68,8 @@ static bool m0_ppu_write(Cartridge *cart, uint16_t addr, uint8_t value) {
     return true;
 }
 
-// Optional destroy hook (Mapper 0 has no extra state)
 static void m0_destroy(struct Mapper *m) {
     if (!m) return;
-    // If you later add state: free(m->state) here.
     m->state = NULL;
 }
 
