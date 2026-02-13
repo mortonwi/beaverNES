@@ -1,10 +1,12 @@
 #include "cartridge.h"
 
+/* cartridge.c - NES cartridge loading and access*/
+
 // Read from cartridge via the CPU address space
 bool cart_cpu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
     if (!cart || !out) return false;
 
-    // Mapper 0 (NROM)
+    // Mapper 0 (NROM) only supports CPU addresses $8000-$FFFF for PRG ROM
     // Mapper 0: CPU PRG window is $8000-$FFFF
     if (addr < 0x8000) return false;
 
@@ -16,10 +18,11 @@ bool cart_cpu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
     // Convert CPU address to PRG offset
     uint32_t offset = (uint32_t)(addr - 0x8000);
 
+    // If it's a 16 KiB PRG ROM, mirror it to fill the 32 KiB CPU window
     if (prg_size == 16384) {
         offset %= 16384; // mirror $C000-$FFFF onto $8000-$BFFF
     }
-
+    // For 32 KiB PRG ROM, no mirroring is needed
     *out = cart->prg[offset];
     return true;
 }
