@@ -4,28 +4,22 @@
 // https://www.copetti.org/writings/consoles/nes/
 
 #include "rom_loader.h"
-#include "mapper.h"   // <-- NEW (mapper_create / mapper_destroy)
+#include "mapper.h"   // mapper_create / mapper_destroy
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/*
-Helper function to safely write an error message.
-*/
 static void set_err(char *err, size_t err_len, const char *msg) {
     if (!err || err_len == 0) return;
     snprintf(err, err_len, "%s", msg);
 }
 
-/**
- * Parses and validates the 16-byte iNES ROM header.
- *
- * Returns true if the header is valid and successfully parsed.
- */
-static bool parse_ines_header(const uint8_t h[INES_HEADER_SIZE], INesHeader *out,
-                             char *err_msg, size_t err_msg_len) {
-    // "NES" 0x1A
+static bool parse_ines_header(const uint8_t h[INES_HEADER_SIZE],
+                              INesHeader *out,
+                              char *err_msg,
+                              size_t err_msg_len) {
+    // iNES magic: "NES" 0x1A
     if (h[0] != 'N' || h[1] != 'E' || h[2] != 'S' || h[3] != 0x1A) {
         set_err(err_msg, err_msg_len, "Not a valid iNES ROM (bad magic)");
         return false;
@@ -33,25 +27,20 @@ static bool parse_ines_header(const uint8_t h[INES_HEADER_SIZE], INesHeader *out
 
     memset(out, 0, sizeof(*out));
 
-    // Read PRG-ROM and CHR-ROM bank counts
-    out->prg_rom_banks = h[4];
-    out->chr_rom_banks = h[5];
-
-    // Store control flags
+    out->prg_rom_banks = h[4]; // 16 KiB units
+    out->chr_rom_banks = h[5]; // 8 KiB units
     out->flags6 = h[6];
     out->flags7 = h[7];
 
-    // Extract cartridge features from flags
     out->has_trainer = (out->flags6 & 0x04) != 0;
     out->mirroring_vertical = (out->flags6 & 0x01) != 0;
     out->four_screen = (out->flags6 & 0x08) != 0;
 
-    // Combine upper and lower mapper bits from flags 6 and 7
+    // Mapper number = high nibble of flags7 + high nibble of flags6
     uint8_t lower = (out->flags6 >> 4) & 0x0F;
     uint8_t upper = (out->flags7 >> 4) & 0x0F;
     out->mapper = (upper << 4) | lower;
 
-    // ROM must contain at least one PRG-ROM bank
     if (out->prg_rom_banks == 0) {
         set_err(err_msg, err_msg_len, "Invalid ROM: 0 PRG banks");
         return false;
@@ -63,7 +52,6 @@ static bool parse_ines_header(const uint8_t h[INES_HEADER_SIZE], INesHeader *out
 void rom_free(Cartridge *cart) {
     if (!cart) return;
 
-    //free mapper object/state (if created)
     if (cart->mapper) {
         mapper_destroy(cart->mapper);
         cart->mapper = NULL;
@@ -76,7 +64,6 @@ void rom_free(Cartridge *cart) {
     memset(cart, 0, sizeof(*cart));
 }
 
-// Loads an NES ROM file from disk and initializes a Cartridge structure
 bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_msg_len) {
     if (!path || !out_cart) {
         set_err(err_msg, err_msg_len, "Invalid args to rom_load");
@@ -91,7 +78,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         return false;
     }
 
-    // Read the 16-byte iNES header
+    //Read & parse header
     uint8_t header[INES_HEADER_SIZE];
     if (fread(header, 1, INES_HEADER_SIZE, f) != INES_HEADER_SIZE) {
         fclose(f);
@@ -99,13 +86,12 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         return false;
     }
 
-    // Parse and validate the iNES header
     if (!parse_ines_header(header, &out_cart->header, err_msg, err_msg_len)) {
         fclose(f);
         return false;
     }
 
-    // If the ROM has a trainer, read the 512-byte trainer data
+    //Optional trainer (512 bytes)
     if (out_cart->header.has_trainer) {
         out_cart->trainer_size = 512;
         out_cart->trainer = (uint8_t*)malloc(out_cart->trainer_size);
@@ -123,8 +109,8 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         }
     }
 
-    //PRG LOADING
-    out_cart->prg_size = (size_t)out_cart->header.prg_rom_banks * 16 * 1024;
+    //PRG-ROM
+    out_cart->prg_size = (size_t)out_cart->header.prg_rom_banks * 16u * 1024u;
     out_cart->prg = (uint8_t*)malloc(out_cart->prg_size);
     if (!out_cart->prg) {
         fclose(f);
@@ -140,12 +126,11 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         return false;
     }
 
-    // --- CHR LOADING ---
-    // If CHR banks == 0, the cartridge uses CHR-RAM (allocate 8 KiB).
-    // Otherwise, load CHR-ROM from the file.
+    //CHR-ROM or CHR-RAM
     if (out_cart->header.chr_rom_banks == 0) {
+        // CHR-RAM: allocate 8 KiB and zero it
         out_cart->chr_is_ram = true;
-        out_cart->chr_size = 8 * 1024;
+        out_cart->chr_size = 8u * 1024u;
         out_cart->chr = (uint8_t*)calloc(1, out_cart->chr_size);
         if (!out_cart->chr) {
             fclose(f);
@@ -155,7 +140,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         }
     } else {
         out_cart->chr_is_ram = false;
-        out_cart->chr_size = (size_t)out_cart->header.chr_rom_banks * 8 * 1024;
+        out_cart->chr_size = (size_t)out_cart->header.chr_rom_banks * 8u * 1024u;
         out_cart->chr = (uint8_t*)malloc(out_cart->chr_size);
         if (!out_cart->chr) {
             fclose(f);
@@ -174,10 +159,10 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
 
     fclose(f);
 
-    //Create mapper after header/ROM data is loaded
+    //Create mapper after ROM data is loaded
     out_cart->mapper = mapper_create(out_cart->header.mapper);
     if (!out_cart->mapper) {
-        set_err(err_msg, err_msg_len, "Unsupported mapper (no mapper implementation)");
+        set_err(err_msg, err_msg_len, "Unsupported mapper (no implementation)");
         rom_free(out_cart);
         return false;
     }
