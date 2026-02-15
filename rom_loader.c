@@ -1,4 +1,10 @@
+// rom_loader.c
+// Sources:
+// https://www.nesdev.org/wiki/INES
+// https://www.copetti.org/writings/consoles/nes/
+
 #include "rom_loader.h"
+#include "mapper.h"   // <-- NEW (mapper_create / mapper_destroy)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,15 +21,7 @@ static void set_err(char *err, size_t err_len, const char *msg) {
 /**
  * Parses and validates the 16-byte iNES ROM header.
  *
- * Parameters:
- *  - h: Pointer to the raw 16-byte iNES header read from the ROM file
- *  - out: Output structure populated with parsed header data
- *  - err_msg: Buffer to store a human-readable error message
- *  - err_msg_len: Size of the error message buffer
- *
- * Returns:
- *  - true if the header is valid and successfully parsed
- *  - false if validation fails
+ * Returns true if the header is valid and successfully parsed.
  */
 static bool parse_ines_header(const uint8_t h[INES_HEADER_SIZE], INesHeader *out,
                              char *err_msg, size_t err_msg_len) {
@@ -64,9 +62,17 @@ static bool parse_ines_header(const uint8_t h[INES_HEADER_SIZE], INesHeader *out
 
 void rom_free(Cartridge *cart) {
     if (!cart) return;
+
+    //free mapper object/state (if created)
+    if (cart->mapper) {
+        mapper_destroy(cart->mapper);
+        cart->mapper = NULL;
+    }
+
     free(cart->prg);
     free(cart->chr);
     free(cart->trainer);
+
     memset(cart, 0, sizeof(*cart));
 }
 
@@ -109,7 +115,6 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
             return false;
         }
 
-        // Trainer data is located immediately after the 16-byte header
         if (fread(out_cart->trainer, 1, out_cart->trainer_size, f) != out_cart->trainer_size) {
             fclose(f);
             set_err(err_msg, err_msg_len, "Failed to read trainer");
@@ -118,7 +123,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         }
     }
 
-    // --- PRG LOADING ---
+    //PRG LOADING
     out_cart->prg_size = (size_t)out_cart->header.prg_rom_banks * 16 * 1024;
     out_cart->prg = (uint8_t*)malloc(out_cart->prg_size);
     if (!out_cart->prg) {
@@ -128,7 +133,6 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         return false;
     }
 
-    // PRG-ROM data is located immediately after the header and optional trainer
     if (fread(out_cart->prg, 1, out_cart->prg_size, f) != out_cart->prg_size) {
         fclose(f);
         set_err(err_msg, err_msg_len, "Failed to read PRG-ROM");
@@ -140,7 +144,6 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
     // If CHR banks == 0, the cartridge uses CHR-RAM (allocate 8 KiB).
     // Otherwise, load CHR-ROM from the file.
     if (out_cart->header.chr_rom_banks == 0) {
-        // CHR-RAM (8 KiB)
         out_cart->chr_is_ram = true;
         out_cart->chr_size = 8 * 1024;
         out_cart->chr = (uint8_t*)calloc(1, out_cart->chr_size);
@@ -151,7 +154,6 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
             return false;
         }
     } else {
-        // CHR-ROM
         out_cart->chr_is_ram = false;
         out_cart->chr_size = (size_t)out_cart->header.chr_rom_banks * 8 * 1024;
         out_cart->chr = (uint8_t*)malloc(out_cart->chr_size);
@@ -162,7 +164,6 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
             return false;
         }
 
-        // CHR-ROM data is located immediately after the PRG-ROM data
         if (fread(out_cart->chr, 1, out_cart->chr_size, f) != out_cart->chr_size) {
             fclose(f);
             set_err(err_msg, err_msg_len, "Failed to read CHR-ROM");
@@ -172,5 +173,14 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
     }
 
     fclose(f);
+
+    //Create mapper after header/ROM data is loaded
+    out_cart->mapper = mapper_create(out_cart->header.mapper);
+    if (!out_cart->mapper) {
+        set_err(err_msg, err_msg_len, "Unsupported mapper (no mapper implementation)");
+        rom_free(out_cart);
+        return false;
+    }
+
     return true;
 }

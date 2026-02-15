@@ -10,10 +10,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-/*
-Forward declaration to avoid circular includes.
-The Mapper type is defined in mapper.h.
-*/
+// Forward declare to avoid circular includes (mapper.h will include rom_loader.h in some layouts)
 typedef struct Mapper Mapper;
 
 /*
@@ -75,8 +72,7 @@ typedef struct Cartridge {
 
     /*
     Active mapper implementation for this cartridge.
-    This allows cart_cpu_read/cart_ppu_read to route reads/writes
-    through the correct mapper behavior.
+    Created in rom_load() and destroyed in rom_free().
     */
     Mapper *mapper;
 
@@ -94,7 +90,7 @@ typedef struct Cartridge {
     // True when CHR is RAM (chr_rom_banks == 0), false when CHR is ROM
     bool chr_is_ram;
 
-    // Optional 512-byte trainer
+    // Optional 512-byte trainer (present when header.has_trainer == true)
     uint8_t *trainer;
     size_t trainer_size;
 } Cartridge;
