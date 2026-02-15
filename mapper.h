@@ -17,17 +17,18 @@ typedef struct Mapper {
     uint8_t mapper_id;
 
     // CPU bus access
-    bool (*cpu_read)(Cartridge *cart, uint16_t addr, uint8_t *out);
-    bool (*cpu_write)(Cartridge *cart, uint16_t addr, uint8_t value);
+    bool (*cpu_read)(struct Mapper *m, Cartridge *cart, uint16_t addr, uint8_t *out);
+    bool (*cpu_write)(struct Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value);
 
     // PPU bus access
-    bool (*ppu_read)(Cartridge *cart, uint16_t addr, uint8_t *out);
-    bool (*ppu_write)(Cartridge *cart, uint16_t addr, uint8_t value);
+    bool (*ppu_read)(struct Mapper *m, Cartridge *cart, uint16_t addr, uint8_t *out);
+    bool (*ppu_write)(struct Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value);
 
-    void *state;
+    void *state;   // mapper-specific state (e.g., selected bank for Mapper 2)
 
     void (*destroy)(struct Mapper *m);
 } Mapper;
+
 
 /*
  * Create a mapper implementation based on mapper_id.
