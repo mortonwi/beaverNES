@@ -8,27 +8,28 @@
 // Forward declare Cartridge to avoid circular includes.
 typedef struct Cartridge Cartridge;
 
+typedef struct Mapper Mapper;
+
 /*
  * Mapper interface:
  * A mapper defines how CPU/PPU address space maps to cartridge PRG/CHR memory.
  * Different mappers implement bank switching and other cartridge hardware logic.
  */
-typedef struct Mapper {
+struct Mapper {
     uint8_t mapper_id;
 
     // CPU bus access
-    bool (*cpu_read)(struct Mapper *m, Cartridge *cart, uint16_t addr, uint8_t *out);
-    bool (*cpu_write)(struct Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value);
+    bool (*cpu_read)(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t *out);
+    bool (*cpu_write)(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value);
 
     // PPU bus access
-    bool (*ppu_read)(struct Mapper *m, Cartridge *cart, uint16_t addr, uint8_t *out);
-    bool (*ppu_write)(struct Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value);
+    bool (*ppu_read)(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t *out);
+    bool (*ppu_write)(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value);
 
-    void *state;   // mapper-specific state (e.g., selected bank for Mapper 2)
+    void *state;
 
-    void (*destroy)(struct Mapper *m);
-} Mapper;
-
+    void (*destroy)(Mapper *m);
+};
 
 /*
  * Create a mapper implementation based on mapper_id.
