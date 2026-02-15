@@ -16,18 +16,16 @@ typedef struct Cartridge Cartridge;
 typedef struct Mapper {
     uint8_t mapper_id;
 
-    // CPU bus access (typically PRG-ROM/PRG-RAM in $8000-$FFFF)
+    // CPU bus access
     bool (*cpu_read)(Cartridge *cart, uint16_t addr, uint8_t *out);
     bool (*cpu_write)(Cartridge *cart, uint16_t addr, uint8_t value);
 
-    // PPU bus access (typically CHR-ROM/CHR-RAM in $0000-$1FFF)
+    // PPU bus access
     bool (*ppu_read)(Cartridge *cart, uint16_t addr, uint8_t *out);
     bool (*ppu_write)(Cartridge *cart, uint16_t addr, uint8_t value);
 
-    // Optional mapper-specific state (bank registers, etc.)
     void *state;
 
-    // Optional cleanup hook for state
     void (*destroy)(struct Mapper *m);
 } Mapper;
 
