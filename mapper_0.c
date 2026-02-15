@@ -66,7 +66,6 @@ static bool mapper0_ppu_write(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t
 }
 
 static void mapper0_destroy(Mapper *m) {
-    // If you add heap-allocated state later, free it here.
     (void)m;
 }
 

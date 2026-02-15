@@ -4,7 +4,7 @@
 bool cart_cpu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
     if (!cart || !cart->mapper || !cart->mapper->cpu_read || !out) return false;
 
-    // Mapper callbacks take Cartridge* (non-const), but reads won’t mutate it here.
+    // Delegate CPU read to the mapper's cpu_read function, which implements the cartridge's memory mapping logic.
     return cart->mapper->cpu_read(cart->mapper, (Cartridge*)cart, addr, out);
 }
 
