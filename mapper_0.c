@@ -1,8 +1,8 @@
 // mapper_0.c
 // Mapper 0 (NROM) implementation
 
-#include "mapper.h"
-#include "rom_loader.h"
+#include "mapper.h"       // Mapper interface
+#include "rom_loader.h"   // Cartridge definition
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -10,20 +10,20 @@
 
 static bool mapper0_cpu_read(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t *out) {
     (void)m;
-    if (!cart || !out) return false;
+    if (!cart || !out || !cart->prg) return false;
 
-    // NROM maps CPU $8000-$FFFF to PRG-ROM
+    // Mapper 0: CPU PRG window is $8000-$FFFF
     if (addr < 0x8000) return false;
 
-    // PRG can be 16 KiB (NROM-128) or 32 KiB (NROM-256)
-    uint32_t prg_size = (uint32_t)cart->prg_size;
-    if (prg_size != 16384 && prg_size != 32768) return false;
+    // NROM PRG is either 16 KiB (NROM-128) or 32 KiB (NROM-256)
+    const uint32_t prg_size = (uint32_t)cart->prg_size;
+    if (prg_size != 16384u && prg_size != 32768u) return false;
 
     uint32_t offset = (uint32_t)(addr - 0x8000);
 
     // If only 16 KiB PRG, mirror $C000-$FFFF onto $8000-$BFFF
-    if (prg_size == 16384) {
-        offset %= 16384;
+    if (prg_size == 16384u) {
+        offset &= 0x3FFFu; // same as % 16384, but faster/clear for power-of-two
     }
 
     *out = cart->prg[offset];
@@ -32,18 +32,19 @@ static bool mapper0_cpu_read(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t 
 
 static bool mapper0_cpu_write(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value) {
     (void)m; (void)cart; (void)addr; (void)value;
-    // Mapper 0 typically does not support PRG writes
+    // Mapper 0 PRG is ROM (writes typically do nothing / not supported)
     return false;
 }
 
 static bool mapper0_ppu_read(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t *out) {
     (void)m;
-    if (!cart || !out) return false;
+    if (!cart || !out || !cart->chr) return false;
 
-    // CHR window is $0000-$1FFF
+    // Mapper 0: PPU CHR window is $0000-$1FFF
     if (addr >= 0x2000) return false;
 
-    if (!cart->chr || cart->chr_size != 8192) return false;
+    // Commonly 8 KiB for NROM; if you later support other CHR sizes, relax this
+    if (cart->chr_size != 8192u) return false;
 
     *out = cart->chr[addr];
     return true;
@@ -51,21 +52,22 @@ static bool mapper0_ppu_read(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t 
 
 static bool mapper0_ppu_write(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value) {
     (void)m;
-    if (!cart) return false;
+    if (!cart || !cart->chr) return false;
 
-    // CHR window is $0000-$1FFF
+    // Mapper 0: PPU CHR window is $0000-$1FFF
     if (addr >= 0x2000) return false;
 
-    // Only writable if this cartridge uses CHR-RAM
+    // Only writable if CHR is RAM
     if (!cart->chr_is_ram) return false;
 
-    if (!cart->chr || cart->chr_size != 8192) return false;
+    if (cart->chr_size != 8192u) return false;
 
     cart->chr[addr] = value;
     return true;
 }
 
 static void mapper0_destroy(Mapper *m) {
+    // Mapper 0 has no extra heap state right now.
     (void)m;
 }
 

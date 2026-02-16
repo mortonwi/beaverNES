@@ -2,9 +2,9 @@
 #include "mapper.h"
 
 bool cart_cpu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
-    if (!cart || !cart->mapper || !cart->mapper->cpu_read || !out) return false;
+    if (!cart || !out || !cart->mapper || !cart->mapper->cpu_read) return false;
 
-    // Delegate CPU read to the mapper's cpu_read function, which implements the cartridge's memory mapping logic.
+    // mapper callbacks expect (Mapper*, Cartridge*, ...)
     return cart->mapper->cpu_read(cart->mapper, (Cartridge*)cart, addr, out);
 }
 
@@ -14,7 +14,7 @@ bool cart_cpu_write(Cartridge *cart, uint16_t addr, uint8_t value) {
 }
 
 bool cart_ppu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
-    if (!cart || !cart->mapper || !cart->mapper->ppu_read || !out) return false;
+    if (!cart || !out || !cart->mapper || !cart->mapper->ppu_read) return false;
     return cart->mapper->ppu_read(cart->mapper, (Cartridge*)cart, addr, out);
 }
 
