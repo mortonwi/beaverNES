@@ -13,7 +13,7 @@ Mapper *mapper_create(uint8_t mapper_id) {
         default: return NULL;
     }
 }
-
+// Default destroy just frees the Mapper struct, but some mappers may have additional state to free.
 void mapper_destroy(Mapper *m) {
     if (!m) return;
     if (m->destroy) m->destroy(m);

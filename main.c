@@ -6,7 +6,7 @@
 #include "rom_loader.h"
 #include "cartridge.h"
 
-// Simple test program to load a ROM and print cartridge info + do some basic reads/writes.
+// Helper to dump a range of CPU addresses from the cartridge for testing
 static void dump_cpu_bytes(const Cartridge *cart, uint16_t addr, int count) {
     printf("0x%04X:", addr);
     for (int i = 0; i < count; i++) {

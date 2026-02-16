@@ -29,13 +29,13 @@ static bool mapper0_cpu_read(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t 
     *out = cart->prg[offset];
     return true;
 }
-
+// Mapper 0 has no PRG writes (ROM), so this always fails.
 static bool mapper0_cpu_write(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value) {
     (void)m; (void)cart; (void)addr; (void)value;
     // Mapper 0 PRG is ROM (writes typically do nothing / not supported)
     return false;
 }
-
+// Mapper 0 PPU read/write implementations below; these depend on whether CHR is ROM or RAM, but the address window is the same.
 static bool mapper0_ppu_read(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t *out) {
     (void)m;
     if (!cart || !out || !cart->chr) return false;
@@ -49,7 +49,7 @@ static bool mapper0_ppu_read(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t 
     *out = cart->chr[addr];
     return true;
 }
-
+// Mapper 0 PPU writes only succeed if CHR is RAM (some NROM carts have CHR-RAM instead of CHR-ROM).
 static bool mapper0_ppu_write(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value) {
     (void)m;
     if (!cart || !cart->chr) return false;
@@ -71,10 +71,12 @@ static void mapper0_destroy(Mapper *m) {
     (void)m;
 }
 
+// Factory function to create a Mapper 0 instance
 Mapper *mapper0_create(void) {
     Mapper *m = (Mapper*)calloc(1, sizeof(Mapper));
     if (!m) return NULL;
 
+    // Initialize function pointers and state for Mapper 0
     m->mapper_id = 0;
     m->cpu_read  = mapper0_cpu_read;
     m->cpu_write = mapper0_cpu_write;

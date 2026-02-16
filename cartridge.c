@@ -4,7 +4,7 @@
 bool cart_cpu_read(const Cartridge *cart, uint16_t addr, uint8_t *out) {
     if (!cart || !out || !cart->mapper || !cart->mapper->cpu_read) return false;
 
-    // mapper callbacks expect (Mapper*, Cartridge*, ...)
+    
     return cart->mapper->cpu_read(cart->mapper, (Cartridge*)cart, addr, out);
 }
 
