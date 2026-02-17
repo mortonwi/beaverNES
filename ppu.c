@@ -128,11 +128,23 @@ void ppu_write(uint16_t addr, uint8_t value) {
 
                 if (addr < 0x2000) {
                     ppu.vram[addr] = value; // CHR placeholder
-                } else if (addr < 0x3F00) {
+                } 
+                
+                else if (addr < 0x3F00) {
                     uint16_t nt = mirror_nametable_addr(addr);
                     ppu.nametable[nt] = value;
-                } else {
-                    ppu.palette[(addr - 0x3F00) & 0x1F] = value;
+                
+                } 
+                
+                else {
+                    uint16_t pal_addr = addr & 0x1F;
+
+                    // Palette mirroring: $3F10/$14/$18/$1C → $3F00/$04/$08/$0C
+                    if ((pal_addr & 0x13) == 0x10) {
+                        pal_addr &= ~0x10;
+                    }
+
+                    ppu.palette[pal_addr] = value;
                 }
 
             ppu.v += (ppu.ppuCtrl & 0x04) ? 32 : 1;
@@ -161,7 +173,14 @@ uint8_t ppu_read(uint16_t addr) {
                 uint16_t nt = mirror_nametable_addr(a);
                 value = ppu.nametable[nt];
             } else {
-                value = ppu.palette[(a - 0x3F00) & 0x1F];
+                uint16_t pal_addr = a & 0x1F;
+
+                // Palette mirroring: $3F10/$14/$18/$1C → $3F00/$04/$08/$0C
+                if ((pal_addr & 0x13) == 0x10) {
+                    pal_addr &= ~0x10;
+                }
+
+                value = ppu.palette[pal_addr];
             }
 
             if (a < 0x3F00) {
