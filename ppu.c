@@ -34,6 +34,12 @@ typedef struct {
     uint8_t  w;          // w: Write toggle for $2005/$2006
     uint8_t  buffer;    // Buffered read for PPUDATA
 
+    //nametable and palette RAM (for testing without a cartridge)
+    uint8_t nametable[0x800];   // 2 KB internal nametable RAM
+    uint8_t palette[0x20];      // palette RAM (placeholder)
+    uint8_t mirroring;          // 0 = horizontal, 1 = vertical
+
+
 } PPU;
 
 static PPU ppu;
@@ -42,6 +48,25 @@ static PPU ppu;
 void ppu_init(void) {
     memset(&ppu, 0, sizeof(PPU));
     ppu.ppuStatus = 0xA0; 
+    ppu.mirroring = 0; // horizontal by default
+
+}
+
+static uint16_t mirror_nametable_addr(uint16_t addr) {
+    // addr expected in $2000–$2FFF
+    uint16_t offset = (addr - 0x2000) & 0x0FFF;
+    uint16_t table = offset / 0x400;   // 0–3
+    uint16_t index = offset & 0x3FF;
+
+    if (ppu.mirroring == 1) {
+        // vertical: NT0,NT2 | NT1,NT3
+        table &= 1;
+    } else {
+        // horizontal: NT0,NT1 | NT2,NT3
+        table >>= 1;
+    }
+
+    return (table * 0x400) + index;
 }
 
 
@@ -99,7 +124,17 @@ void ppu_write(uint16_t addr, uint8_t value) {
 
 
         case 0x2007: // PPUDATA
-            ppu.vram[ppu.v & 0x3FFF] = value;
+            uint16_t addr = ppu.v & 0x3FFF;
+
+                if (addr < 0x2000) {
+                    ppu.vram[addr] = value; // CHR placeholder
+                } else if (addr < 0x3F00) {
+                    uint16_t nt = mirror_nametable_addr(addr);
+                    ppu.nametable[nt] = value;
+                } else {
+                    ppu.palette[(addr - 0x3F00) & 0x1F] = value;
+                }
+
             ppu.v += (ppu.ppuCtrl & 0x04) ? 32 : 1;
             break;
     }
@@ -109,33 +144,42 @@ uint8_t ppu_read(uint16_t addr) {
     uint8_t result = 0;
 
     switch (addr & 0x2007) {
+
         case 0x2002: // PPUSTATUS
             result = ppu.ppuStatus;
-            ppu.ppuStatus &= ~0x80; // clear vblank
+            ppu.ppuStatus &= ~0x80; // clear VBlank
             ppu.w = 0;
             break;
 
-        case 0x2007: { // PPUDATA read
-            uint16_t addr = ppu.v & 0x3FFF;
+        case 0x2007: { // PPUDATA
+            uint16_t a = ppu.v & 0x3FFF;
+            uint8_t value;
 
-            if (addr < 0x3F00) {
-                // buffered read
-                result = ppu.buffer;
-                ppu.buffer = ppu.vram[addr];
+            if (a < 0x2000) {
+                value = ppu.vram[a];
+            } else if (a < 0x3F00) {
+                uint16_t nt = mirror_nametable_addr(a);
+                value = ppu.nametable[nt];
             } else {
-                // palette reads are immediate
-                result = ppu.vram[addr];
-                ppu.buffer = ppu.vram[addr - 0x1000]; // mirrors from $2F00
+                value = ppu.palette[(a - 0x3F00) & 0x1F];
+            }
+
+            if (a < 0x3F00) {
+                result = ppu.buffer;
+                ppu.buffer = value;
+            } else {
+                result = value;
+                ppu.buffer = value; // palette reads are not delayed
             }
 
             ppu.v += (ppu.ppuCtrl & 0x04) ? 32 : 1;
             break;
         }
-
     }
 
     return result;
 }
+
 
 /*
  BACKGROUND RENDERER (PROTOTYPE)
@@ -149,7 +193,6 @@ This will be replaced later by a cycle-accurate PPU renderer.
 void ppu_render_frame(uint32_t *framebuffer) {
     memset(framebuffer, 0, PPU_WIDTH * PPU_HEIGHT * sizeof(uint32_t));
 
-    uint16_t nametable_base = 0x2000;
     uint16_t pattern_base = (ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000;
     //loop through 32x30 grid
     for (int tile_y = 0; tile_y < 30; tile_y++) {
@@ -157,7 +200,7 @@ void ppu_render_frame(uint32_t *framebuffer) {
 
             //read title index from nametable
             uint8_t tile_index =
-                ppu.vram[nametable_base + tile_y * 32 + tile_x];
+                ppu.nametable[tile_y * 32 + tile_x];
             
             //each tile is 16 bytes in the pattern table
             uint16_t tile_addr = pattern_base + tile_index * 16;
@@ -205,7 +248,8 @@ int main(void) {
 
     // Fake nametable
     for (int i = 0; i < 960; i++) {
-        ppu.vram[0x2000 + i] = i % 256;
+        ppu.nametable[i] = i % 256;
+
     }
 
     ppu_render_frame(framebuffer);
@@ -263,6 +307,64 @@ int main(void) {
     uint8_t r2 = ppu_read(0x2007);
 
     printf("expect junk, then 11; Buffered reads: %02X then %02X \n", r1, r2);
+
+    printf("Testing nametable mirroring...\n");
+
+    /* Horizontal mirroring (default = 0)
+    $2000 mirrors $2400 */
+    ppu.mirroring = 0;
+
+    ppu_write(0x2006, 0x20);
+    ppu_write(0x2006, 0x00);
+    ppu_write(0x2007, 0xAA);
+
+    ppu_write(0x2006, 0x24);
+    ppu_write(0x2006, 0x00);
+    uint8_t mirror_h = ppu_read(0x2007);
+
+    printf("Horizontal mirror read (expect AA): %02X\n", mirror_h);
+
+    /* Vertical mirroring
+    $2000 mirrors $2800 */
+    ppu.mirroring = 1;
+
+    ppu_write(0x2006, 0x20);
+    ppu_write(0x2006, 0x00);
+    ppu_write(0x2007, 0xBB);
+
+    ppu_write(0x2006, 0x28);
+    ppu_write(0x2006, 0x00);
+    uint8_t mirror_v = ppu_read(0x2007);
+
+    printf("Vertical mirror read (expect BB): %02X\n", mirror_v);
+
+    printf("Testing palette mirroring...\n");
+
+    ppu_write(0x2006, 0x3F);
+    ppu_write(0x2006, 0x10);
+    ppu_write(0x2007, 0x77);
+
+    ppu_write(0x2006, 0x3F);
+    ppu_write(0x2006, 0x00);
+    uint8_t pal = ppu_read(0x2007);
+
+    printf("Palette mirror read (expect 77): %02X\n", pal);
+    
+    printf("Testing buffered vs immediate PPUDATA reads...\n");
+
+    ppu.vram[0x2000] = 0x11;
+
+    ppu_write(0x2006, 0x20);
+    ppu_write(0x2006, 0x00);
+    uint8_t b1 = ppu_read(0x2007); // buffered (junk)
+    uint8_t b2 = ppu_read(0x2007); // actual
+
+    ppu_write(0x2006, 0x3F);
+    ppu_write(0x2006, 0x00);
+    uint8_t imm = ppu_read(0x2007); // immediate
+
+    printf("Buffered reads: %02X then %02X | Immediate: %02X\n", b1, b2, imm);
+
 
     return 0;
 }
