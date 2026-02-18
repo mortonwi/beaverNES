@@ -61,7 +61,7 @@ typedef struct {
     uint16_t timer_counter;         // internal countdown
 
     uint8_t seq_pos;                // duty sequence (0-7)
-    uint16_t length_counter;        // internal length counter
+    uint8_t length_counter;        // internal length counter
 } Pulse;
 
 /**
@@ -70,13 +70,19 @@ typedef struct {
  * Generated audio waves are triangular
  */
 typedef struct {
-    uint8_t length_halt;            // length counter halt / linear counter control
-    uint16_t linear_reload;         // linear counter reload value
+    uint8_t enabled;                // channel enabled
 
-    // Timer
-    uint16_t timer_reload_low;      // timer reload low bits
-    uint16_t timer_reload_high;     // limer reload high bits
-    uint16_t length_counter;        // length counter value
+    uint8_t length_counter;         // length counter timer
+    uint8_t control_flag;           // length halt + linear control
+
+    uint8_t linear_counter;         // linear counter timer
+    uint8_t linear_reload_value;    // reload value from $4008
+    uint8_t linear_reload_flag;     // reload trigger flag
+
+    uint16_t timer_reload;          // raw timer period
+    uint16_t timer_counter;         // internal timer countdown
+
+    uint8_t seq_pos;                // waveform step (0–31)
 } Triangle;
 
 /**
@@ -85,13 +91,23 @@ typedef struct {
  * Semi-random wave generation resulting in noise.
  */
 typedef struct {
+    uint8_t enabled;                // channel enabled
+    
     uint8_t length_halt;            // length counter halt / envelope loop
     uint8_t constant_volume;        // use constant volume
     uint8_t envelope_volume;        // envelope volume or decay level
 
+    uint8_t envelope_divider;       // envelope divider counter
+    uint8_t envelope_decay;         // current envelope decay level
+    uint8_t envelope_start;         // envelope start flag
+
     uint8_t lfsr_mode;              // noise mode short / long LFSR
     uint8_t noise_period;           // noise timer period
-    uint16_t length_counter;        // length counter value
+
+    uint16_t timer_counter;         // internal timer countdown
+    uint8_t length_counter;         // length counter value
+
+    uint16_t lfsr;                  // 15-bit Linear Feedback Shift Register
 } Noise;
 
 /**
@@ -125,11 +141,17 @@ typedef struct {
     Noise noise;
     Delta delta;
 
-    uint64_t cycles;        // APU cycle
+    uint64_t cycles;                // APU cycle
+    uint8_t frame_mode;             // 0 = 4-step, 1 = 5-step
+    uint8_t frame_irq_inhibit;      // IRQ inhibit flag
+    uint8_t frame_interrupt;        // Frame interrupt flag
+    uint16_t frame_counter_cycles;  // Cycles within current frame
 } APU;
 
 void init_apu(APU *apu, Region region);
-float apu_tick(APU *apu, Region region);
+float apu_tick(APU *apu);
+
 void apu_write(APU *apu, uint16_t addr, uint8_t value);
+uint8_t apu_read(APU *apu, uint16_t addr);
 
 #endif
