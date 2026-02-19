@@ -269,9 +269,7 @@ void ppu_clock(void)
 {
     ppu.cycle++;
 
-    // -------------------------------------------------
     // Background Rendering (visible scanlines only)
-    // -------------------------------------------------
     int rendering_scanline = (ppu.scanline >= 0 && ppu.scanline < 240);
     int rendering_cycle    = (ppu.cycle >= 1 && ppu.cycle <= 256);
 
@@ -296,9 +294,8 @@ void ppu_clock(void)
                     (ppu.bg_shift_pattern_high & 0xFF00) | ppu.next_tile_msb;
 
                 // Fetch next tile ID
-                uint16_t nt_index =
-                    mirror_nametable_addr(0x2000 | (ppu.v & 0x0FFF));
-
+                uint16_t nt_addr = 0x2000 | (ppu.v & 0x0FFF);
+                uint16_t nt_index = mirror_nametable_addr(nt_addr);
                 ppu.next_tile_id = ppu.nametable[nt_index];
                 break;
             }
@@ -331,16 +328,28 @@ void ppu_clock(void)
             }
 
             case 7:
-                // Temporary horizontal increment
-                ppu.v++;
+            {
+                //coarse X increment
+                if ((ppu.v & 0x001F) == 31)
+                {
+                    // coarse X = 0
+                    ppu.v &= ~0x001F;
+
+                    // Switch horizontal nametable
+                    ppu.v ^= 0x0400;
+                }
+                else
+                {
+                    // coarse X++
+                    ppu.v += 1;
+                }
                 break;
+            }
+
         }
     }
 
-    // -------------------------------------------------
     // VBlank & NMI Logic
-    // -------------------------------------------------
-
     // Default: NMI is low unless we explicitly pulse it
     ppu.nmi = 0;
 
@@ -361,9 +370,7 @@ void ppu_clock(void)
         ppu.ppuStatus &= ~0x80;
     }
 
-    // -------------------------------------------------
     // End of Scanline / Frame
-    // -------------------------------------------------
     if (ppu.cycle >= 341)
     {
         ppu.cycle = 0;
@@ -376,9 +383,6 @@ void ppu_clock(void)
         }
     }
 }
-
-
-
 
 /*
 Test main function populates VRAM with a pattern and nametable data to validate 
@@ -448,8 +452,8 @@ int main(void) {
     // --- Test PPUDATA buffering ---
     printf("Testing PPUDATA buffering...\n");
 
-    ppu.vram[0x2000] = 0x11;
-    ppu.vram[0x2001] = 0x22;
+    ppu.vram[0x0000] = 0x11;
+    ppu.vram[0x0001] = 0x22;
 
     ppu_write(0x2006, 0x20);
     ppu_write(0x2006, 0x00);
@@ -471,6 +475,7 @@ int main(void) {
 
     ppu_write(0x2006, 0x24);
     ppu_write(0x2006, 0x00);
+    (void)ppu_read(0x2007); // dummy read to reset latch
     uint8_t mirror_h = ppu_read(0x2007);
 
     printf("Horizontal mirror read (expect AA): %02X\n", mirror_h);
@@ -485,6 +490,7 @@ int main(void) {
 
     ppu_write(0x2006, 0x28);
     ppu_write(0x2006, 0x00);
+    (void)ppu_read(0x2007); // dummy read to reset latch
     uint8_t mirror_v = ppu_read(0x2007);
 
     printf("Vertical mirror read (expect BB): %02X\n", mirror_v);
