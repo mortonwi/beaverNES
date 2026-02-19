@@ -39,8 +39,17 @@ typedef struct {
     uint8_t palette[0x20];      // palette RAM (placeholder)
     uint8_t mirroring;          // 0 = horizontal, 1 = vertical
 
+    // Timing state (for future cycle-accurate rendering)
+    int cycle;        // 0–340
+    int scanline;     // -1–260 
+    int frame;
+    uint8_t nmi;      // NMI request flag
+
+
 
 } PPU;
+
+
 
 static PPU ppu;
 
@@ -209,44 +218,46 @@ Iterates over the 32x30 tile grid
 For each tile, read its pattern data (8x8 pixels), convert pattern bits into pixels in a framebuffer
 This will be replaced later by a cycle-accurate PPU renderer.
 */
-void ppu_render_frame(uint32_t *framebuffer) {
-    memset(framebuffer, 0, PPU_WIDTH * PPU_HEIGHT * sizeof(uint32_t));
+// void ppu_render_frame(uint32_t *framebuffer) {
+//     memset(framebuffer, 0, PPU_WIDTH * PPU_HEIGHT * sizeof(uint32_t));
 
-    uint16_t pattern_base = (ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000;
-    //loop through 32x30 grid
-    for (int tile_y = 0; tile_y < 30; tile_y++) {
-        for (int tile_x = 0; tile_x < 32; tile_x++) {
+//     uint16_t pattern_base = (ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000;
+//     //loop through 32x30 grid
+//     for (int tile_y = 0; tile_y < 30; tile_y++) {
+//         for (int tile_x = 0; tile_x < 32; tile_x++) {
 
-            //read title index from nametable
-            uint8_t tile_index =
-                ppu.nametable[tile_y * 32 + tile_x];
+//             //read title index from nametable
+//             uint8_t tile_index =
+//                 ppu.nametable[tile_y * 32 + tile_x];
             
-            //each tile is 16 bytes in the pattern table
-            uint16_t tile_addr = pattern_base + tile_index * 16;
+//             //each tile is 16 bytes in the pattern table
+//             uint16_t tile_addr = pattern_base + tile_index * 16;
 
-            //each tile with a height of 8 pixels
-            for (int row = 0; row < 8; row++) {
-                uint8_t lo = ppu.vram[tile_addr + row];
-                uint8_t hi = ppu.vram[tile_addr + row + 8];
+//             //each tile with a height of 8 pixels
+//             for (int row = 0; row < 8; row++) {
+//                 uint8_t lo = ppu.vram[tile_addr + row];
+//                 uint8_t hi = ppu.vram[tile_addr + row + 8];
 
-                //each tile 8 pixels wide
-                for (int col = 0; col < 8; col++) {
-                    uint8_t bit = 7 - col;
-                    uint8_t color =
-                        ((hi >> bit) & 1) << 1 |
-                        ((lo >> bit) & 1);
+//                 //each tile 8 pixels wide
+//                 for (int col = 0; col < 8; col++) {
+//                     uint8_t bit = 7 - col;
+//                     uint8_t color =
+//                         ((hi >> bit) & 1) << 1 |
+//                         ((lo >> bit) & 1);
 
-                    int x = tile_x * 8 + col;
-                    int y = tile_y * 8 + row;
+//                     int x = tile_x * 8 + col;
+//                     int y = tile_y * 8 + row;
 
-                    if (color) {
-                        framebuffer[y * PPU_WIDTH + x] = 0xFFFFFFFF;
-                    }
-                }
-            }
-        }
-    }
-}
+//                     if (color) {
+//                         framebuffer[y * PPU_WIDTH + x] = 0xFFFFFFFF;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
+
+
 
 
 /*
