@@ -45,8 +45,15 @@ typedef struct {
     int frame;
     uint8_t nmi;      // NMI request flag
 
-
-
+    //Background shift registers
+    uint16_t bg_shift_pattern_low;
+    uint16_t bg_shift_pattern_high;
+    uint16_t bg_shift_attr_low;
+    uint16_t bg_shift_attr_high;
+    uint8_t next_tile_id;
+    uint8_t next_tile_attr;
+    uint8_t next_tile_lsb;
+    uint8_t next_tile_msb;
 } PPU;
 
 
@@ -261,7 +268,68 @@ This will be replaced later by a cycle-accurate PPU renderer.
 void ppu_clock(void)
 {
     ppu.cycle++;
+    // Background Rendering
+    int rendering_scanline = (ppu.scanline >= 0 && ppu.scanline < 240);
+    int rendering_cycle    = (ppu.cycle >= 1 && ppu.cycle <= 256);
 
+    if (rendering_scanline && rendering_cycle)
+    {
+        // Shift background registers every visible pixel
+        ppu.bg_shift_pattern_low  <<= 1;
+        ppu.bg_shift_pattern_high <<= 1;
+        ppu.bg_shift_attr_low     <<= 1;
+        ppu.bg_shift_attr_high    <<= 1;
+
+        // Tile fetch pipeline every 8 cycles
+        switch ((ppu.cycle - 1) % 8)
+        {
+            case 0:
+                // Load shift registers with previously fetched tile data
+                ppu.bg_shift_pattern_low  =
+                    (ppu.bg_shift_pattern_low & 0xFF00) | ppu.next_tile_lsb;
+
+                ppu.bg_shift_pattern_high =
+                    (ppu.bg_shift_pattern_high & 0xFF00) | ppu.next_tile_msb;
+
+                // Fetch next tile ID
+                uint16_t nt_index = mirror_nametable_addr(0x2000 | (ppu.v & 0x00FFF));
+                ppu.next_tile_id = ppu.nametable[nt_index];
+
+                break;
+
+            case 2:
+                // Attribute fetch (placeholder for now)
+                ppu.next_tile_attr = 0;
+                break;
+
+            case 4:
+            {
+                uint16_t pattern_addr =
+                    ((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)
+                    + (ppu.next_tile_id * 16)
+                    + ((ppu.v >> 12) & 0x7);
+
+                ppu.next_tile_lsb = ppu.vram[pattern_addr];
+                break;
+            }
+
+            case 6:
+            {
+                uint16_t pattern_addr =
+                    ((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)
+                    + (ppu.next_tile_id * 16)
+                    + ((ppu.v >> 12) & 0x7);
+
+                ppu.next_tile_msb = ppu.vram[pattern_addr + 8];
+                break;
+            }
+
+            case 7:
+                // Temporary horizontal increment (will replace later)
+                ppu.v++;
+                break;
+        }
+    }
     // End of scanline
     if (ppu.cycle >= 341)
     {
@@ -276,22 +344,23 @@ void ppu_clock(void)
         }
     }
 
+    // VBlank logic
     // Enter VBlank: Scanline 241, cycle 1
     if (ppu.scanline == 241 && ppu.cycle == 1)
     {
-        ppu.ppuStatus |= 0x80; // Set VBlank flag
+        ppu.ppuStatus |= 0x80;
 
         if (ppu.ppuCtrl & 0x80)
         {
-            ppu.nmi = 1; // Request NMI if enabled
+            ppu.nmi = 1;
         }
     }
 
-    // Clear VBlank (Pre-render line) Scanline 261, cycle 1
+    // Clear VBlank: Pre-render line (261), cycle 1
     if (ppu.scanline == 261 && ppu.cycle == 1)
     {
-        ppu.ppuStatus &= ~0x80; // Clear VBlank
-        ppu.nmi = 0;            // Clear NMI request
+        ppu.ppuStatus &= ~0x80;
+        ppu.nmi = 0;
     }
 }
 
@@ -303,24 +372,25 @@ background tile decoding logic without requiring a CPU, ROM, or display output.
 */
 #ifdef PPU_TEST
 int main(void) {
-    uint32_t framebuffer[PPU_WIDTH * PPU_HEIGHT];
+   //int32_t framebuffer[PPU_WIDTH * PPU_HEIGHT];
 
     ppu_init();
+    ppu.ppuCtrl = 0x80; // Enable NMI
 
     // Fake pattern table (checkerboard)
-    for (int i = 0; i < 256; i++) {
-        ppu.vram[i * 16] = 0xAA;
-        ppu.vram[i * 16 + 8] = 0x55;
-    }
+    // for (int i = 0; i < 256; i++) {
+    //     ppu.vram[i * 16] = 0xAA;
+    //     ppu.vram[i * 16 + 8] = 0x55;
+    // }
 
-    // Fake nametable
-    for (int i = 0; i < 960; i++) {
-        ppu.nametable[i] = i % 256;
+    // // Fake nametable
+    // for (int i = 0; i < 960; i++) {
+    //     ppu.nametable[i] = i % 256;
 
-    }
+    // }
 
-    ppu_render_frame(framebuffer);
-    printf("PPU prototype running successfully.\n");
+    // ppu_render_frame(framebuffer);
+    // printf("PPU prototype running successfully.\n");
 
     // --- Test PPUCTRL VRAM increment behavior ---
     printf("Starting PPUCTRL $2000 VRAM increment test...\n");
@@ -432,6 +502,38 @@ int main(void) {
 
     printf("Buffered reads: %02X then %02X | Immediate: %02X\n", b1, b2, imm);
 
+    printf("PPU Timing Test Starting...\n");
+
+    int total_cycles = 341 * 262 * 2; // Run for 2 frames
+
+    for (int i = 0; i < total_cycles; i++)
+    {
+        ppu_clock();
+
+        // Detect VBlank entry
+        if (ppu.scanline == 241 && ppu.cycle == 1)
+        {
+            printf("Entered VBlank | Frame: %d | Scanline: %d | Cycle: %d | NMI: %d\n",
+                   ppu.frame, ppu.scanline, ppu.cycle, ppu.nmi);
+        }
+
+        // Detect VBlank clear
+        if (ppu.scanline == 261 && ppu.cycle == 1)
+        {
+            printf("Cleared VBlank | Frame: %d | Scanline: %d | Cycle: %d\n",
+                   ppu.frame, ppu.scanline, ppu.cycle);
+        }
+
+        // Detect NMI request
+        if (ppu.nmi)
+        {
+            printf("NMI Requested | Frame: %d | Scanline: %d | Cycle: %d\n",
+                   ppu.frame, ppu.scanline, ppu.cycle);
+        }
+    }
+
+    printf("Finished.\n");
+    printf("Final Frame Count: %d\n", ppu.frame);
 
     return 0;
 }
