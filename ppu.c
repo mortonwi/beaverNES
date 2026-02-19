@@ -268,7 +268,10 @@ This will be replaced later by a cycle-accurate PPU renderer.
 void ppu_clock(void)
 {
     ppu.cycle++;
-    // Background Rendering
+
+    // -------------------------------------------------
+    // Background Rendering (visible scanlines only)
+    // -------------------------------------------------
     int rendering_scanline = (ppu.scanline >= 0 && ppu.scanline < 240);
     int rendering_cycle    = (ppu.cycle >= 1 && ppu.cycle <= 256);
 
@@ -284,7 +287,8 @@ void ppu_clock(void)
         switch ((ppu.cycle - 1) % 8)
         {
             case 0:
-                // Load shift registers with previously fetched tile data
+            {
+                // Load shift registers
                 ppu.bg_shift_pattern_low  =
                     (ppu.bg_shift_pattern_low & 0xFF00) | ppu.next_tile_lsb;
 
@@ -292,13 +296,15 @@ void ppu_clock(void)
                     (ppu.bg_shift_pattern_high & 0xFF00) | ppu.next_tile_msb;
 
                 // Fetch next tile ID
-                uint16_t nt_index = mirror_nametable_addr(0x2000 | (ppu.v & 0x00FFF));
-                ppu.next_tile_id = ppu.nametable[nt_index];
+                uint16_t nt_index =
+                    mirror_nametable_addr(0x2000 | (ppu.v & 0x0FFF));
 
+                ppu.next_tile_id = ppu.nametable[nt_index];
                 break;
+            }
 
             case 2:
-                // Attribute fetch (placeholder for now)
+                // Attribute fetch (still placeholder)
                 ppu.next_tile_attr = 0;
                 break;
 
@@ -325,44 +331,52 @@ void ppu_clock(void)
             }
 
             case 7:
-                // Temporary horizontal increment (will replace later)
+                // Temporary horizontal increment
                 ppu.v++;
                 break;
         }
     }
-    // End of scanline
+
+    // -------------------------------------------------
+    // VBlank & NMI Logic
+    // -------------------------------------------------
+
+    // Default: NMI is low unless we explicitly pulse it
+    ppu.nmi = 0;
+
+    // Enter VBlank: scanline 241, cycle 1
+    if (ppu.scanline == 241 && ppu.cycle == 1)
+    {
+        ppu.ppuStatus |= 0x80;  // Set VBlank flag
+
+        if (ppu.ppuCtrl & 0x80)
+        {
+            ppu.nmi = 1;        // Pulse NMI for one cycle
+        }
+    }
+
+    // Clear VBlank: pre-render line (261), cycle 1
+    if (ppu.scanline == 261 && ppu.cycle == 1)
+    {
+        ppu.ppuStatus &= ~0x80;
+    }
+
+    // -------------------------------------------------
+    // End of Scanline / Frame
+    // -------------------------------------------------
     if (ppu.cycle >= 341)
     {
         ppu.cycle = 0;
         ppu.scanline++;
 
-        // End of frame
         if (ppu.scanline >= 262)
         {
             ppu.scanline = 0;
             ppu.frame++;
         }
     }
-
-    // VBlank logic
-    // Enter VBlank: Scanline 241, cycle 1
-    if (ppu.scanline == 241 && ppu.cycle == 1)
-    {
-        ppu.ppuStatus |= 0x80;
-
-        if (ppu.ppuCtrl & 0x80)
-        {
-            ppu.nmi = 1;
-        }
-    }
-
-    // Clear VBlank: Pre-render line (261), cycle 1
-    if (ppu.scanline == 261 && ppu.cycle == 1)
-    {
-        ppu.ppuStatus &= ~0x80;
-        ppu.nmi = 0;
-    }
 }
+
 
 
 
@@ -503,6 +517,9 @@ int main(void) {
     printf("Buffered reads: %02X then %02X | Immediate: %02X\n", b1, b2, imm);
 
     printf("PPU Timing Test Starting...\n");
+
+    // Re-enable NMI before timing test
+    ppu_write(0x2000, 0x80);
 
     int total_cycles = 341 * 262 * 2; // Run for 2 frames
 
