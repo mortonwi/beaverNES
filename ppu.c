@@ -410,7 +410,7 @@ int main(void) {
     // ppu_render_frame(framebuffer);
     // printf("PPU prototype running successfully.\n");
 
-    // --- Test PPUCTRL VRAM increment behavior ---
+    //Test PPUCTRL VRAM increment behavior
     printf("Starting PPUCTRL $2000 VRAM increment test...\n");
     // Set VRAM address to $2000
     ppu_write(0x2006, 0x20); // high byte
@@ -430,7 +430,7 @@ int main(void) {
     ppu_write(0x2007, 0xBB);
     printf("VRAM addr after +32 write: %04X\n", ppu.v);
 
-    // --- Test PPUADDR latch reset ---
+    //Test PPUADDR latch reset
     printf("Testing PPUADDR latch reset...\n");
 
     ppu_write(0x2006, 0x3F); // high
@@ -440,7 +440,7 @@ int main(void) {
 
     printf("PPU v after reset+latch: %04X (expected 0010)\n", ppu.v);
 
-    // --- Test PPUSCROLL ---
+    //Test PPUSCROLL
     printf("Testing PPUSCROLL...\n");
     ppu_read(0x2002);        // reset w
 
@@ -449,7 +449,7 @@ int main(void) {
 
     printf("t=%04X x=%d\n", ppu.t, ppu.x);
 
-    // --- Test PPUDATA buffering ---
+    //Test PPUDATA buffering
     printf("Testing PPUDATA buffering...\n");
 
     ppu.vram[0x0000] = 0x11;
