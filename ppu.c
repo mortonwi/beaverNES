@@ -170,6 +170,7 @@ uint8_t ppu_read(uint16_t addr) {
             result = ppu.ppuStatus;
             ppu.ppuStatus &= ~0x80; // clear VBlank
             ppu.w = 0;
+            ppu.nmi = 0; // Clear NMI request on status read
             break;
 
         case 0x2007: { // PPUDATA
@@ -257,11 +258,47 @@ This will be replaced later by a cycle-accurate PPU renderer.
 //     }
 // }
 
+void ppu_clock(void)
+{
+    ppu.cycle++;
+
+    // End of scanline
+    if (ppu.cycle >= 341)
+    {
+        ppu.cycle = 0;
+        ppu.scanline++;
+
+        // End of frame
+        if (ppu.scanline >= 262)
+        {
+            ppu.scanline = 0;
+            ppu.frame++;
+        }
+    }
+
+    // Enter VBlank: Scanline 241, cycle 1
+    if (ppu.scanline == 241 && ppu.cycle == 1)
+    {
+        ppu.ppuStatus |= 0x80; // Set VBlank flag
+
+        if (ppu.ppuCtrl & 0x80)
+        {
+            ppu.nmi = 1; // Request NMI if enabled
+        }
+    }
+
+    // Clear VBlank (Pre-render line) Scanline 261, cycle 1
+    if (ppu.scanline == 261 && ppu.cycle == 1)
+    {
+        ppu.ppuStatus &= ~0x80; // Clear VBlank
+        ppu.nmi = 0;            // Clear NMI request
+    }
+}
 
 
 
 /*
-Ttest main function populates VRAM with a pattern and nametable data to validate 
+Test main function populates VRAM with a pattern and nametable data to validate 
 background tile decoding logic without requiring a CPU, ROM, or display output.
 */
 #ifdef PPU_TEST
