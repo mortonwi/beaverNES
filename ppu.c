@@ -216,55 +216,7 @@ uint8_t ppu_read(uint16_t addr) {
     return result;
 }
 
-
-/*
- BACKGROUND RENDERER (PROTOTYPE)
-This function is a temporary background renderer used for testing.
-It does NOT emulate real NES timing, scanlines, or VBlank behavior.
-For now it Validates VRAM layout, pattern table tile decoding, nametable → tile → pixel mapping
-Iterates over the 32x30 tile grid
-For each tile, read its pattern data (8x8 pixels), convert pattern bits into pixels in a framebuffer
-This will be replaced later by a cycle-accurate PPU renderer.
-*/
-// void ppu_render_frame(uint32_t *framebuffer) {
-//     memset(framebuffer, 0, PPU_WIDTH * PPU_HEIGHT * sizeof(uint32_t));
-
-//     uint16_t pattern_base = (ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000;
-//     //loop through 32x30 grid
-//     for (int tile_y = 0; tile_y < 30; tile_y++) {
-//         for (int tile_x = 0; tile_x < 32; tile_x++) {
-
-//             //read title index from nametable
-//             uint8_t tile_index =
-//                 ppu.nametable[tile_y * 32 + tile_x];
-            
-//             //each tile is 16 bytes in the pattern table
-//             uint16_t tile_addr = pattern_base + tile_index * 16;
-
-//             //each tile with a height of 8 pixels
-//             for (int row = 0; row < 8; row++) {
-//                 uint8_t lo = ppu.vram[tile_addr + row];
-//                 uint8_t hi = ppu.vram[tile_addr + row + 8];
-
-//                 //each tile 8 pixels wide
-//                 for (int col = 0; col < 8; col++) {
-//                     uint8_t bit = 7 - col;
-//                     uint8_t color =
-//                         ((hi >> bit) & 1) << 1 |
-//                         ((lo >> bit) & 1);
-
-//                     int x = tile_x * 8 + col;
-//                     int y = tile_y * 8 + row;
-
-//                     if (color) {
-//                         framebuffer[y * PPU_WIDTH + x] = 0xFFFFFFFF;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
-
+//PPU clock function to handle background rendering and VBlank timing
 void ppu_clock(void)
 {
     ppu.cycle++;
@@ -349,8 +301,45 @@ void ppu_clock(void)
         }
     }
 
+    // Vertical increment at cycle 256 visible scanlines
+
+    if (rendering_scanline && ppu.cycle == 256)
+    {
+        // If fine Y < 7, just increment fine Y
+        if ((ppu.v & 0x7000) != 0x7000)
+        {
+            ppu.v += 0x1000;
+        }
+        else
+        {
+            // fine Y = 0
+            ppu.v &= ~0x7000;
+
+            // extract coarse Y
+            uint16_t y = (ppu.v & 0x03E0) >> 5;
+
+            if (y == 29)
+            {
+                y = 0;
+                // switch vertical nametable
+                ppu.v ^= 0x0800;
+            }
+            else if (y == 31)
+            {
+                // attribute table row skip
+                y = 0;
+            }
+            else
+            {
+                y++;
+            }
+
+            // write coarse Y back
+            ppu.v = (ppu.v & ~0x03E0) | (y << 5);
+        }
+    }
+
     // VBlank & NMI Logic
-    // Default: NMI is low unless we explicitly pulse it
     ppu.nmi = 0;
 
     // Enter VBlank: scanline 241, cycle 1
@@ -394,21 +383,6 @@ int main(void) {
 
     ppu_init();
     ppu.ppuCtrl = 0x80; // Enable NMI
-
-    // Fake pattern table (checkerboard)
-    // for (int i = 0; i < 256; i++) {
-    //     ppu.vram[i * 16] = 0xAA;
-    //     ppu.vram[i * 16 + 8] = 0x55;
-    // }
-
-    // // Fake nametable
-    // for (int i = 0; i < 960; i++) {
-    //     ppu.nametable[i] = i % 256;
-
-    // }
-
-    // ppu_render_frame(framebuffer);
-    // printf("PPU prototype running successfully.\n");
 
     //Test PPUCTRL VRAM increment behavior
     printf("Starting PPUCTRL $2000 VRAM increment test...\n");
