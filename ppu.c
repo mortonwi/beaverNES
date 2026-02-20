@@ -239,15 +239,15 @@ void ppu_clock(void)
     // Background Rendering visible scanlines
     int rendering_scanline = (ppu.scanline >= 0 && ppu.scanline < 240);
     int rendering_cycle    = (ppu.cycle >= 1 && ppu.cycle <= 256);
+    int rendering_enabled = (ppu.ppuMask & 0x08);
 
-    if (rendering_scanline && rendering_cycle)
+    if (rendering_enabled && rendering_scanline && rendering_cycle)
     {
         //Shift background registers every visible pixel
         ppu.bg_shift_pattern_low  <<= 1;
         ppu.bg_shift_pattern_high <<= 1;
         ppu.bg_shift_attr_low     <<= 1;
         ppu.bg_shift_attr_high    <<= 1;
-
 
         // Background pixel generation
         uint16_t bit_mux = 0x8000 >> ppu.x;
@@ -349,7 +349,6 @@ void ppu_clock(void)
     }
 
     // Vertical increment at cycle 256 visible scanlines
-
     if (rendering_scanline && ppu.cycle == 256)
     {
         // If fine Y < 7, just increment fine Y
