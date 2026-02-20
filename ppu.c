@@ -242,6 +242,13 @@ void ppu_clock(void)
                 ppu.bg_shift_pattern_low  =(ppu.bg_shift_pattern_low & 0xFF00) | ppu.next_tile_lsb;
                 ppu.bg_shift_pattern_high =(ppu.bg_shift_pattern_high & 0xFF00) | ppu.next_tile_msb;
 
+                // Load attribute bits into shift registers
+                uint8_t attr = ppu.next_tile_attr;
+
+                ppu.bg_shift_attr_low  = (ppu.bg_shift_attr_low & 0xFF00) |((attr & 0x01) ? 0xFF : 0x00);
+
+                ppu.bg_shift_attr_high = (ppu.bg_shift_attr_high & 0xFF00) | ((attr & 0x02) ? 0xFF : 0x00);
+
                 // Fetch next tile ID
                 uint16_t nt_addr = 0x2000 | (ppu.v & 0x0FFF);
                 uint16_t nt_index = mirror_nametable_addr(nt_addr);
