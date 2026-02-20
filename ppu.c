@@ -271,7 +271,7 @@ void ppu_clock(void)
         if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT) {
 
             uint8_t palette_entry = ppu.palette[color_index & 0x1F];
-            uint8_t rgb = nes_palette[palette_entry & 0x3F];
+            uint32_t rgb = nes_palette[palette_entry & 0x3F];
             ppu.framebuffer[y * PPU_WIDTH + x] = rgb;
         }
 
