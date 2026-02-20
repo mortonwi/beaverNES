@@ -11,6 +11,19 @@ compile with: gcc -Wall -Wextra -DPPU_TEST ppu.c -o ppu_test
 #define PPU_WIDTH 256
 #define PPU_HEIGHT 240
 
+// NES pallette: 64 colors (6-bit indices) mapped to RGB values
+static const uint32_t nes_palette[64] = {
+    0x545454,0x001E74,0x081090,0x300088,0x440064,0x5C0030,0x540400,0x3C1800,
+    0x202A00,0x083A00,0x004000,0x003C00,0x00323C,0x000000,0x000000,0x000000,
+    0x989698,0x084CC4,0x3032EC,0x5C1EE4,0x8814B0,0xA01464,0x982220,0x783C00,
+    0x545A00,0x287200,0x087C00,0x007628,0x006678,0x000000,0x000000,0x000000,
+    0xECEEEC,0x4C9AEC,0x787CEC,0xB062EC,0xE454EC,0xEC58B4,0xEC6A64,0xD48820,
+    0xA0AA00,0x74C400,0x4CD020,0x38CC6C,0x38B4CC,0x3C3C3C,0x000000,0x000000,
+    0xECEEEC,0xA8CCEC,0xBCBCEC,0xD4B2EC,0xECAEEC,0xECAED4,0xECB4B0,0xE4C490,
+    0xCCD278,0xB4DE78,0xA8E290,0x98E2B4,0xA0D6E4,0xA0A2A0,0x000000,0x000000
+};
+
+
 // PPU Structure for state and registers
 typedef struct {
     uint8_t vram[0x4000];   // PPU address space
@@ -54,6 +67,8 @@ typedef struct {
     uint8_t next_tile_attr;
     uint8_t next_tile_lsb;
     uint8_t next_tile_msb;
+
+    uint32_t framebuffer[PPU_WIDTH * PPU_HEIGHT];
 } PPU;
 
 
@@ -232,6 +247,34 @@ void ppu_clock(void)
         ppu.bg_shift_pattern_high <<= 1;
         ppu.bg_shift_attr_low     <<= 1;
         ppu.bg_shift_attr_high    <<= 1;
+
+
+        // Background pixel generation
+        uint16_t bit_mux = 0x8000 >> ppu.x;
+
+        // Pattern bits 0–3
+        uint8_t p0 = (ppu.bg_shift_pattern_low  & bit_mux) ? 1 : 0;
+        uint8_t p1 = (ppu.bg_shift_pattern_high & bit_mux) ? 1 : 0;
+        uint8_t bg_pixel = (p1 << 1) | p0;
+
+        // Attribute bits palette select
+        uint8_t a0 = (ppu.bg_shift_attr_low  & bit_mux) ? 1 : 0;
+        uint8_t a1 = (ppu.bg_shift_attr_high & bit_mux) ? 1 : 0;
+        uint8_t bg_palette = (a1 << 1) | a0;
+
+        // Final color index(0–15
+        uint8_t color_index = (bg_palette << 2) | bg_pixel;
+
+        int x = ppu.cycle - 1;
+        int y = ppu.scanline;
+
+        if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT) {
+
+            uint8_t palette_entry = ppu.palette[color_index & 0x1F];
+            uint8_t rgb = nes_palette[palette_entry & 0x3F];
+            ppu.framebuffer[y * PPU_WIDTH + x] = rgb;
+        }
+
 
         // Tile fetch pipeline every 8 cycles
         switch ((ppu.cycle - 1) % 8)
