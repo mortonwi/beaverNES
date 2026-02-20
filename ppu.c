@@ -239,11 +239,8 @@ void ppu_clock(void)
             case 0:
             {
                 // Load shift registers
-                ppu.bg_shift_pattern_low  =
-                    (ppu.bg_shift_pattern_low & 0xFF00) | ppu.next_tile_lsb;
-
-                ppu.bg_shift_pattern_high =
-                    (ppu.bg_shift_pattern_high & 0xFF00) | ppu.next_tile_msb;
+                ppu.bg_shift_pattern_low  =(ppu.bg_shift_pattern_low & 0xFF00) | ppu.next_tile_lsb;
+                ppu.bg_shift_pattern_high =(ppu.bg_shift_pattern_high & 0xFF00) | ppu.next_tile_msb;
 
                 // Fetch next tile ID
                 uint16_t nt_addr = 0x2000 | (ppu.v & 0x0FFF);
@@ -253,17 +250,20 @@ void ppu_clock(void)
             }
 
             case 2:
-                // Attribute fetch (still placeholder)
-                ppu.next_tile_attr = 0;
+                //Attribute table address
+                uint16_t attr_addr = 0x23C0 | (ppu.v & 0x0C00) | ((ppu.v >> 4) & 0x38) | ((ppu.v >> 2) & 0x07);
+                uint16_t attr_index = mirror_nametable_addr(attr_addr);
+                uint8_t attr_byte = ppu.nametable[attr_index];
+
+                //Check which quadrant is inside the attribute byte
+                uint8_t shift = ((ppu.v >> 4) & 4) | (ppu.v & 2);
+                ppu.next_tile_attr = (attr_byte >> shift) & 0x03;
                 break;
 
             case 4:
             {
                 uint16_t pattern_addr =
-                    ((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)
-                    + (ppu.next_tile_id * 16)
-                    + ((ppu.v >> 12) & 0x7);
-
+                    ((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000) + (ppu.next_tile_id * 16) + ((ppu.v >> 12) & 0x7);
                 ppu.next_tile_lsb = ppu.vram[pattern_addr];
                 break;
             }
@@ -271,10 +271,7 @@ void ppu_clock(void)
             case 6:
             {
                 uint16_t pattern_addr =
-                    ((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)
-                    + (ppu.next_tile_id * 16)
-                    + ((ppu.v >> 12) & 0x7);
-
+                    ((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)+ (ppu.next_tile_id * 16) + ((ppu.v >> 12) & 0x7);
                 ppu.next_tile_msb = ppu.vram[pattern_addr + 8];
                 break;
             }
@@ -351,7 +348,7 @@ void ppu_clock(void)
         // Copy vertical bits from t to v: fine Y, coarse Y, and vertical nametable
         ppu.v = (ppu.v & ~0x7BE0) | (ppu.t & 0x7BE0);
     }
-    
+
     // VBlank & NMI Logic
     ppu.nmi = 0;
 
