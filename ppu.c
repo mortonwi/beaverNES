@@ -221,13 +221,13 @@ void ppu_clock(void)
 {
     ppu.cycle++;
 
-    // Background Rendering (visible scanlines only)
+    // Background Rendering visible scanlines
     int rendering_scanline = (ppu.scanline >= 0 && ppu.scanline < 240);
     int rendering_cycle    = (ppu.cycle >= 1 && ppu.cycle <= 256);
 
     if (rendering_scanline && rendering_cycle)
     {
-        // Shift background registers every visible pixel
+        //Shift background registers every visible pixel
         ppu.bg_shift_pattern_low  <<= 1;
         ppu.bg_shift_pattern_high <<= 1;
         ppu.bg_shift_attr_low     <<= 1;
@@ -339,6 +339,19 @@ void ppu_clock(void)
         }
     }
 
+    // Horizontal scrool reload at cycle 257 visible scanlines
+    if (rendering_scanline && ppu.cycle == 257)
+    {
+        ppu.v = (ppu.v & ~0x041F) | (ppu.t & 0x041F);
+    }
+
+    // Vertical scroll reload
+    if (ppu.scanline == 261 && ppu.cycle >= 280 && ppu.cycle <= 304)
+    {
+        // Copy vertical bits from t to v: fine Y, coarse Y, and vertical nametable
+        ppu.v = (ppu.v & ~0x7BE0) | (ppu.t & 0x7BE0);
+    }
+    
     // VBlank & NMI Logic
     ppu.nmi = 0;
 
