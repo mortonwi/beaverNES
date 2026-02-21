@@ -69,10 +69,11 @@ typedef struct {
     uint8_t next_tile_msb;
 
     uint32_t framebuffer[PPU_WIDTH * PPU_HEIGHT];
+
+    //OAM secondary buffer for sprite evaluation
+    uint8_t secondary_oam[32];   // 8 sprites × 4 bytes
+    uint8_t sprite_count;
 } PPU;
-
-
-
 static PPU ppu;
 
 // power-up state
@@ -100,6 +101,47 @@ static uint16_t mirror_nametable_addr(uint16_t addr) {
     return (table * 0x400) + index;
 }
 
+// Evaluate sprites for current scanline (max 8)
+static void evaluate_sprites(void)
+{
+    ppu.sprite_count = 0;
+
+    // Clear secondary OAM
+    memset(ppu.secondary_oam, 0xFF, sizeof(ppu.secondary_oam));
+
+    int sprite_height = (ppu.ppuCtrl & 0x20) ? 16 : 8;
+
+    for (int i = 0; i < 64; i++)
+    {
+        uint8_t y = ppu.oam[i * 4 + 0];
+        uint8_t tile = ppu.oam[i * 4 + 1];
+        uint8_t attr = ppu.oam[i * 4 + 2];
+        uint8_t x = ppu.oam[i * 4 + 3];
+
+        int row = ppu.scanline - y;
+
+        if (row >= 0 && row < sprite_height)
+        {
+            if (ppu.sprite_count < 8)
+            {
+                int idx = ppu.sprite_count * 4;
+
+                ppu.secondary_oam[idx + 0] = y;
+                ppu.secondary_oam[idx + 1] = tile;
+                ppu.secondary_oam[idx + 2] = attr;
+                ppu.secondary_oam[idx + 3] = x;
+
+                ppu.sprite_count++;
+            }
+            else
+            {
+                // Sprite overflow flag
+                ppu.ppuStatus |= 0x20;
+                break;
+            }
+        }
+    }
+}
 
 // Read REGISTER address assignments and behavior.
 void ppu_write(uint16_t addr, uint8_t value) {
@@ -406,6 +448,7 @@ void ppu_clock(void)
     if (rendering_enabled && rendering_scanline && ppu.cycle == 257)
     {
         ppu.v = (ppu.v & ~0x041F) | (ppu.t & 0x041F);
+        evaluate_sprites(); // Evaluate sprites for next scanline
     }
 
     // Vertical scroll reload
