@@ -365,7 +365,7 @@ void ppu_clock(void)
 
     if (rendering_enabled && rendering_scanline && rendering_cycle)
     {
-        //Shift background registers every visible pixel
+        //Shift background registers every visible pixel                `
         ppu.bg_shift_pattern_low  <<= 1;
         ppu.bg_shift_pattern_high <<= 1;
         ppu.bg_shift_attr_low     <<= 1;
@@ -392,30 +392,92 @@ void ppu_clock(void)
             bg_pixel = 0;
         }
 
-        // Final color index(0–15
-        uint8_t color_index = (bg_palette << 2) | bg_pixel;
+    // ------------------------------------------------------------
+// SPRITE PIXEL FETCH (highest priority sprite first)
+// ------------------------------------------------------------
+        uint8_t sprite_pixel = 0;
+        uint8_t sprite_palette = 0;
+        uint8_t sprite_priority = 0;
+        int sprite_zero_rendering = 0;
+        (void)sprite_zero_rendering;
 
-        int x = ppu.cycle - 1;
-        int y = ppu.scanline;
-
-        if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT) {
-
-           uint8_t palette_entry;
-
-            if (bg_pixel == 0)
+        for (int i = 0; i < ppu.sprite_count && i < 8; i++)
+        {
+            if (ppu.sprite_x_counter[i] == 0)
             {
-                // Universal background color ($3F00)
-                palette_entry = ppu.palette[0x00];
+                uint8_t p0 = (ppu.sprite_shifter_pattern_low[i] & 0x80) ? 1 : 0;
+                uint8_t p1 = (ppu.sprite_shifter_pattern_high[i] & 0x80) ? 1 : 0;
+
+                sprite_pixel = (p1 << 1) | p0;
+
+                if (sprite_pixel != 0)
+                {
+                    sprite_palette = (ppu.sprite_attr[i] & 0x03) + 0x04;
+                    sprite_priority = (ppu.sprite_attr[i] & 0x20) == 0;
+
+                    if (i == 0)
+                        sprite_zero_rendering = 1;
+
+                    break;
+                }
+            }
+        }
+
+        // PIXEL MIXING LOGIC
+        uint8_t final_pixel = 0;
+        uint8_t final_palette = 0;
+
+        if (bg_pixel == 0 && sprite_pixel == 0)
+        {
+            final_pixel = 0;
+            final_palette = 0;
+        }
+        else if (bg_pixel == 0 && sprite_pixel != 0)
+        {
+            final_pixel = sprite_pixel;
+            final_palette = sprite_palette;
+        }
+        else if (bg_pixel != 0 && sprite_pixel == 0)
+        {
+            final_pixel = bg_pixel;
+            final_palette = bg_palette;
+        }
+        else
+        {
+            // Both non-zero
+            if (sprite_priority)
+            {
+                final_pixel = sprite_pixel;
+                final_palette = sprite_palette;
             }
             else
             {
-                palette_entry = ppu.palette[color_index & 0x1F];
+                final_pixel = bg_pixel;
+                final_palette = bg_palette;
             }
+            // Sprite 0 hit detection will go here next
+        }
 
+        // Final palette lookup and framebuffer write
+        int x = ppu.cycle - 1;
+        int y = ppu.scanline;
+
+        if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT)
+        {
+            uint8_t palette_addr;
+            if (final_pixel == 0)
+            {
+                palette_addr = 0; // Universal background color
+            }
+            else
+            {
+                // $3F00 + (palette << 2) + pixel
+                palette_addr = (final_palette << 2) | (final_pixel & 0x03);
+            }
+            uint8_t palette_entry = ppu.palette[palette_addr & 0x1F];
             uint32_t rgb = nes_palette[palette_entry & 0x3F];
             ppu.framebuffer[y * PPU_WIDTH + x] = rgb;
         }
-
 
         // Tile fetch pipeline every 8 cycles
         switch ((ppu.cycle - 1) % 8)
