@@ -5,3 +5,5 @@ beavernes
 # ROM files (do not commit copyrighted data)
 roms/
 *.nes
+*_test
+*_test.exe
