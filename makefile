@@ -1,33 +1,35 @@
 CC      := gcc
-CFLAGS  := -std=c11 -Wall -Wextra -Wpedantic -O2 `sdl2-config --cflags`
-LDFLAGS := `sdl2-config --libs`
+CFLAGS  := -std=c11 -Wall -Wextra -Wpedantic -O2
+LDFLAGS :=
 
-TARGET  := beavernes
+SDL_CFLAGS  := $(shell sdl2-config --cflags)
+SDL_LDFLAGS := $(shell sdl2-config --libs)
 
-SRCS := main.c \
-        rom_loader.c \
-        cartridge.c \
-        mapper.c \
-        mapper_0.c \
-        mapper_2.c \
-        controller.c \
-		controller_test.c \
-        input.c
+TARGET_ROM  := beavernes
+SRCS_ROM    := main.c rom_loader.c cartridge.c mapper.c mapper_0.c mapper_2.c
+OBJS_ROM    := $(SRCS_ROM:.c=.o)
 
-OBJS := $(SRCS:.c=.o)
+TARGET_INPUT := input_test
+SRCS_INPUT   := input_test.c controller.c input.c
+OBJS_INPUT   := $(SRCS_INPUT:.c=.o)
 
-all: $(TARGET)
+all: $(TARGET_ROM) $(TARGET_INPUT)
 
-$(TARGET): $(OBJS)
-	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+$(TARGET_ROM): $(OBJS_ROM)
+	$(CC) $(OBJS_ROM) -o $@ $(LDFLAGS)
+
+# IMPORTANT: explicit input_test rule
+$(TARGET_INPUT): CFLAGS += $(SDL_CFLAGS)
+$(TARGET_INPUT): $(OBJS_INPUT)
+	$(CC) $(OBJS_INPUT) -o $@ $(SDL_LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(TARGET) $(OBJS)
+	rm -f $(TARGET_ROM) $(TARGET_INPUT) $(OBJS_ROM) $(OBJS_INPUT)
 
-run: $(TARGET)
-	./$(TARGET)
+run-input: $(TARGET_INPUT)
+	./$(TARGET_INPUT)
 
-.PHONY: all clean run
+.PHONY: all clean run-input
