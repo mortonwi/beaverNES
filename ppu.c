@@ -73,6 +73,13 @@ typedef struct {
     //OAM secondary buffer for sprite evaluation
     uint8_t secondary_oam[32];   // 8 sprites × 4 bytes
     uint8_t sprite_count;
+
+    // Sprite rendering (prepared for pixel mixing)
+    uint8_t  sprite_shifter_pattern_low[8];
+    uint8_t  sprite_shifter_pattern_high[8];
+    uint8_t  sprite_x_counter[8];
+    uint8_t  sprite_attr[8];
+    uint8_t  sprite_id[8];
 } PPU;
 static PPU ppu;
 
@@ -143,6 +150,79 @@ static void evaluate_sprites(void)
     }
 }
 
+// Fetch sprite pattern data for the next scanline based on sprites selected in secondary OAM.
+static void load_sprite_shifters_for_next_scanline(int next_scanline)
+{
+    // Clear shifters
+    for (int i = 0; i < 8; i++) {
+        ppu.sprite_shifter_pattern_low[i]  = 0;
+        ppu.sprite_shifter_pattern_high[i] = 0;
+        ppu.sprite_x_counter[i]            = 0;
+        ppu.sprite_attr[i]                 = 0;
+        ppu.sprite_id[i]                   = 0;
+    }
+
+    for (int i = 0; i < ppu.sprite_count && i < 8; i++)
+    {
+        uint8_t spr_y    = ppu.secondary_oam[i * 4 + 0];
+        uint8_t spr_id   = ppu.secondary_oam[i * 4 + 1];
+        uint8_t spr_attr = ppu.secondary_oam[i * 4 + 2];
+        uint8_t spr_x    = ppu.secondary_oam[i * 4 + 3];
+
+        ppu.sprite_x_counter[i] = spr_x;
+        ppu.sprite_attr[i]      = spr_attr;
+        ppu.sprite_id[i]        = spr_id;
+
+        // Row within sprite (next_scanline - sprite_y)
+        int row = next_scanline - spr_y;
+
+        // 8x8 sprite pattern table select: PPUCTRL bit 3 (0x08)
+        uint16_t pattern_base = (ppu.ppuCtrl & 0x08) ? 0x1000 : 0x0000;
+
+        // Vertical flip
+        if (spr_attr & 0x80) {
+            row = 7 - row;
+        }
+
+        uint16_t addr = pattern_base + (spr_id * 16) + (uint16_t)row;
+
+        uint8_t lo = ppu.vram[addr];
+        uint8_t hi = ppu.vram[addr + 8];
+
+        // Horizontal flip (bit 6)
+        if (spr_attr & 0x40)
+        {
+            // bit-reverse each byte
+            uint8_t rlo = 0, rhi = 0;
+            for (int b = 0; b < 8; b++) {
+                rlo = (rlo << 1) | (lo & 1);
+                rhi = (rhi << 1) | (hi & 1);
+                lo >>= 1;
+                hi >>= 1;
+            }
+            lo = rlo;
+            hi = rhi;
+        }
+
+        ppu.sprite_shifter_pattern_low[i]  = lo;
+        ppu.sprite_shifter_pattern_high[i] = hi;
+    }
+}
+
+// Tick sprite x counters / shifters each visible pixel.
+// Call this once per visible pixel when rendering is enabled.
+static void tick_sprite_shifters(void)
+{
+    for (int i = 0; i < ppu.sprite_count && i < 8; i++)
+    {
+        if (ppu.sprite_x_counter[i] > 0) {
+            ppu.sprite_x_counter[i]--;
+        } else {
+            ppu.sprite_shifter_pattern_low[i]  <<= 1;
+            ppu.sprite_shifter_pattern_high[i] <<= 1;
+        }
+    }
+}
 // Read REGISTER address assignments and behavior.
 void ppu_write(uint16_t addr, uint8_t value) {
     switch (addr & 0x2007) {
@@ -291,6 +371,8 @@ void ppu_clock(void)
         ppu.bg_shift_attr_low     <<= 1;
         ppu.bg_shift_attr_high    <<= 1;
 
+        // Tick sprite shifters each visible pixel (prepares sprite pixels for mixing)
+        tick_sprite_shifters();
         // Background pixel generation
         uint16_t bit_mux = 0x8000 >> ppu.x;
 
@@ -449,6 +531,7 @@ void ppu_clock(void)
     {
         ppu.v = (ppu.v & ~0x041F) | (ppu.t & 0x041F);
         evaluate_sprites(); // Evaluate sprites for next scanline
+        load_sprite_shifters_for_next_scanline(ppu.scanline + 1);
     }
 
     // Vertical scroll reload
