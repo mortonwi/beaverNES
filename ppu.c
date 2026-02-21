@@ -239,7 +239,7 @@ void ppu_clock(void)
     // Background Rendering visible scanlines
     int rendering_scanline = (ppu.scanline >= 0 && ppu.scanline < 240);
     int rendering_cycle    = (ppu.cycle >= 1 && ppu.cycle <= 256);
-    int rendering_enabled = (ppu.ppuMask & 0x08);
+    int rendering_enabled = (ppu.ppuMask & 0x08) != 0;
 
     if (rendering_enabled && rendering_scanline && rendering_cycle)
     {
@@ -262,6 +262,12 @@ void ppu_clock(void)
         uint8_t a1 = (ppu.bg_shift_attr_high & bit_mux) ? 1 : 0;
         uint8_t bg_palette = (a1 << 1) | a0;
 
+        //Left 8 pixel background clipping
+        if (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8)
+        {
+            bg_pixel = 0;
+        }
+
         // Final color index(0–15
         uint8_t color_index = (bg_palette << 2) | bg_pixel;
 
@@ -270,7 +276,18 @@ void ppu_clock(void)
 
         if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT) {
 
-            uint8_t palette_entry = ppu.palette[color_index & 0x1F];
+           uint8_t palette_entry;
+
+            if (bg_pixel == 0)
+            {
+                // Universal background color ($3F00)
+                palette_entry = ppu.palette[0x00];
+            }
+            else
+            {
+                palette_entry = ppu.palette[color_index & 0x1F];
+            }
+
             uint32_t rgb = nes_palette[palette_entry & 0x3F];
             ppu.framebuffer[y * PPU_WIDTH + x] = rgb;
         }
@@ -349,7 +366,7 @@ void ppu_clock(void)
     }
 
     // Vertical increment at cycle 256 visible scanlines
-    if (rendering_scanline && ppu.cycle == 256)
+    if (rendering_enabled && rendering_scanline && ppu.cycle == 256)
     {
         // If fine Y < 7, just increment fine Y
         if ((ppu.v & 0x7000) != 0x7000)
@@ -386,13 +403,13 @@ void ppu_clock(void)
     }
 
     // Horizontal scrool reload at cycle 257 visible scanlines
-    if (rendering_scanline && ppu.cycle == 257)
+    if (rendering_enabled && rendering_scanline && ppu.cycle == 257)
     {
         ppu.v = (ppu.v & ~0x041F) | (ppu.t & 0x041F);
     }
 
     // Vertical scroll reload
-    if (ppu.scanline == 261 && ppu.cycle >= 280 && ppu.cycle <= 304)
+    if (rendering_enabled && ppu.scanline == 261 && ppu.cycle >= 280 && ppu.cycle <= 304)
     {
         // Copy vertical bits from t to v: fine Y, coarse Y, and vertical nametable
         ppu.v = (ppu.v & ~0x7BE0) | (ppu.t & 0x7BE0);
