@@ -149,9 +149,9 @@ static void evaluate_sprites(void)
         }
     }
 }
-
+//load the sprite shifters for the next scanline
 // Fetch sprite pattern data for the next scanline based on sprites selected in secondary OAM.
-static void load_sprite_shifters_for_next_scanline(int next_scanline)
+static void load_sprite_shifters(int next_scanline)
 {
     // Clear shifters
     for (int i = 0; i < 8; i++) {
@@ -174,17 +174,44 @@ static void load_sprite_shifters_for_next_scanline(int next_scanline)
         ppu.sprite_id[i]        = spr_id;
 
         // Row within sprite (next_scanline - sprite_y)
+        // Row within sprite
         int row = next_scanline - spr_y;
 
-        // 8x8 sprite pattern table select: PPUCTRL bit 3 (0x08)
-        uint16_t pattern_base = (ppu.ppuCtrl & 0x08) ? 0x1000 : 0x0000;
+        // Determine sprite height
+        uint8_t sprite_height = (ppu.ppuCtrl & 0x20) ? 16 : 8;
 
         // Vertical flip
-        if (spr_attr & 0x80) {
-            row = 7 - row;
+        if (spr_attr & 0x80)
+        {
+            row = sprite_height - 1 - row;
         }
 
-        uint16_t addr = pattern_base + (spr_id * 16) + (uint16_t)row;
+        uint16_t addr;
+
+        if (ppu.ppuCtrl & 0x20)
+        {
+            // -----------------------------
+            // 8x16 SPRITE MODE
+            // -----------------------------
+            uint16_t table = (spr_id & 0x01) ? 0x1000 : 0x0000;
+            uint8_t tile_index = spr_id & 0xFE;
+
+            if (row > 7)
+            {
+                tile_index++;
+                row -= 8;
+            }
+
+            addr = table + (tile_index * 16) + (uint16_t)row;
+        }
+        else
+        {
+            // -----------------------------
+            // 8x8 SPRITE MODE
+            // -----------------------------
+            uint16_t table = (ppu.ppuCtrl & 0x08) ? 0x1000 : 0x0000;
+            addr = table + (spr_id * 16) + (uint16_t)row;
+        }
 
         uint8_t lo = ppu.vram[addr];
         uint8_t hi = ppu.vram[addr + 8];
@@ -602,7 +629,7 @@ void ppu_clock(void)
     {
         ppu.v = (ppu.v & ~0x041F) | (ppu.t & 0x041F);
         evaluate_sprites(); // Evaluate sprites for next scanline
-        load_sprite_shifters_for_next_scanline(ppu.scanline + 1);
+        load_sprite_shifters(ppu.scanline + 1);
     }
 
     // Vertical scroll reload
