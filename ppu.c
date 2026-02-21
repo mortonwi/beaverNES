@@ -392,14 +392,11 @@ void ppu_clock(void)
             bg_pixel = 0;
         }
 
-    // ------------------------------------------------------------
 // SPRITE PIXEL FETCH (highest priority sprite first)
-// ------------------------------------------------------------
         uint8_t sprite_pixel = 0;
         uint8_t sprite_palette = 0;
         uint8_t sprite_priority = 0;
         int sprite_zero_rendering = 0;
-        (void)sprite_zero_rendering;
 
         for (int i = 0; i < ppu.sprite_count && i < 8; i++)
         {
@@ -456,6 +453,18 @@ void ppu_clock(void)
                 final_palette = bg_palette;
             }
             // Sprite 0 hit detection will go here next
+            if (sprite_zero_rendering)
+            {
+                // Background and sprite must both be non-zero
+                // Must not be in left 8 pixels if masking disabled
+                int left_bg_clipped = (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8);
+                int left_sprite_clipped = (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8);
+
+                if (!left_bg_clipped && !left_sprite_clipped)
+                {
+                    ppu.ppuStatus |= 0x40; // Set Sprite 0 Hit flag
+                }
+            }
         }
 
         // Final palette lookup and framebuffer write
