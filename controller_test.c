@@ -7,6 +7,7 @@ static int fail(const char* msg) {
     return 1;
 }
 
+// This test verifies the basic behavior of the controller implementation:
 int main(void) {
     Controller c;
     controller_init(&c);

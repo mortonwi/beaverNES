@@ -9,7 +9,7 @@ typedef struct {
     uint8_t shift_reg;  // serial shift register
 } Controller;
 
-// Button bit positions (bit0 = A ... bit7 = Right)
+// Button bit positions
 typedef enum {
     BTN_A = 0,
     BTN_B,
@@ -32,6 +32,7 @@ static inline void controller_set_state(Controller* c, uint8_t buttons) {
     }
 }
 
+// Set or clear a single button
 static inline void controller_set_button(Controller* c, NesButton button, int pressed) {
     if (pressed) c->buttons |=  (1u << button);
     else         c->buttons &= ~(1u << button);
