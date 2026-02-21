@@ -41,7 +41,7 @@ int main(void) {
         }
     }
 
-    // --- Test strobe=1 behavior: always return A ---
+    // Test strobe=1 behavior: always return A
     // Turn strobe on (continuous latch)
     controller_write(&c, 1);
 
@@ -56,8 +56,8 @@ int main(void) {
     uint8_t v = controller_read(&c) & 1;
     if (v != 0) return fail("With strobe=1, after releasing A, read() should return 0.");
 
-    // --- Optional: after 8 reads (strobe=0), return 1s ---
-    // Only keep this if your controller_read() sets shift_reg |= 0x80
+
+    // Test post-8-reads behavior: some controllers return 1, some return 0, some repeat last button.
     controller_write(&c, 0); // strobe off
     controller_write(&c, 1); // latch current
     controller_write(&c, 0); // latch on 1->0
@@ -65,7 +65,7 @@ int main(void) {
     // Consume 8 reads
     for (int i = 0; i < 8; i++) (void)controller_read(&c);
 
-    // Next few reads should be 1 (common behavior)
+    // Next few reads should be 1
     for (int i = 0; i < 3; i++) {
         uint8_t r = controller_read(&c) & 1;
         if (r != 1) {

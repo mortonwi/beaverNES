@@ -11,7 +11,6 @@ int input_init(void) {
     }
 
     // Tiny window so SDL can receive keyboard events.
-    // (You can replace this with your real window later.)
     g_window = SDL_CreateWindow(
         "beaverNES input test",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -27,6 +26,7 @@ int input_init(void) {
     return 0;
 }
 
+// Build the button state bitfield from the current keyboard state.
 static uint8_t build_buttons_from_keyboard(void) {
     const Uint8* k = SDL_GetKeyboardState(NULL);
     uint8_t b = 0;
@@ -46,6 +46,7 @@ static uint8_t build_buttons_from_keyboard(void) {
     return b;
 }
 
+// Poll for input events and update the controller state. Returns 1 if the user requested to quit, 0 otherwise.
 int input_update(Controller* c) {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -57,8 +58,7 @@ int input_update(Controller* c) {
         }
     }
 
-    // SDL_GetKeyboardState needs SDL_PumpEvents; PollEvent already pumps,
-    // but this makes it safe if no events happened.
+    // SDL_GetKeyboardState needs SDL_PumpEvents
     SDL_PumpEvents();
 
     uint8_t buttons = build_buttons_from_keyboard();
@@ -67,6 +67,7 @@ int input_update(Controller* c) {
     return 0;
 }
 
+// Clean up SDL resources.
 void input_shutdown(void) {
     if (g_window) SDL_DestroyWindow(g_window);
     g_window = NULL;
