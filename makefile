@@ -11,6 +11,7 @@ SRCS := main.c \
         mapper_0.c \
         mapper_2.c \
         controller.c \
+		controller_test.c \
         input.c
 
 OBJS := $(SRCS:.c=.o)
