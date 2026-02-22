@@ -52,25 +52,73 @@ Initial mapper support targets **Mapper 0 (NROM)**, which requires no bank switc
 
 ROM loading and mapping have been tested using real NES ROMs (e.g., *Super Mario Bros.*), confirming correct mapper detection and memory behavior.
 
+
+## Memory Mapping (Mapper 2 - UxROM)
+
+Mapper 2 (UxROM) supports PRG-ROM bank switching, allowing larger games to run on the NES.
+
+### Current Mapper 2 Support
+
+- 16 KiB switchable PRG-ROM bank mapped to `$8000-$BFFF`
+- Fixed 16 KiB PRG-ROM bank mapped to `$C000-$FFFF`
+- Bank switching controlled via CPU writes to `$8000-$FFFF`
+- CHR-RAM (8 KiB) mapped to PPU address space `$0000-$1FFF`
+- Proper header-based mapper detection
+
+### Behavior Details
+
+- Writes to the mapper select the lower PRG bank
+- The upper PRG bank remains fixed to the last bank
+- No CHR-ROM bank switching (CHR-RAM only)
+
+ROM loading and mapping have been tested using real UxROM titles to validate bank switching behavior.
+
 ---
 
-## Input Handling (Planned / In Progress)
+## Input Handling (Implemented)
 
-NES controllers use a **serial shift register**, where button states are read one bit at a time through memory-mapped registers.
+NES controllers use a serial shift register, where button states are read one bit at a time through memory-mapped registers.
 
-### Current Status
-- Input handling design is defined but not fully implemented yet  
-- SDL2 will be used for cross-platform keyboard and controller input  
-- Planned button mapping:
-  - `A`, `B`, `Select`, `Start`  
-  - `Up`, `Down`, `Left`, `Right`  
+### Current Implementation
 
-### Planned NES Controller Emulation
-- Memory-mapped registers:
-  - `$4016` – Controller 1  
-  - `$4017` – Controller 2  
-- Emulation of strobe and serial shift behavior to match original hardware  
-- Controller state stored as an 8-bit value and read by the CPU  
+- SDL2-based cross-platform keyboard input
+- Accurate NES controller shift register behavior
+- Proper strobe ($4016 write) handling
+- Serial bit-by-bit reads matching original hardware
+- Controller state stored as 8-bit value
+
+### Keyboard Mapping (Controller 1)
+
+| NES Button | Keyboard Key |
+|------------|--------------|
+| A          | X |
+| B          | Z |
+| Select     | Right Shift |
+| Start      | Enter |
+| Up         | Arrow Up |
+| Down       | Arrow Down |
+| Left       | Arrow Left |
+| Right      | Arrow Right |
+| Quit Test  | Escape |
+
+### Memory-Mapped Registers
+
+- `$4016` — Controller 1
+
+### Behavior Details
+
+- Writing `1` then `0` to `$4016` latches button states
+- CPU reads shift out bits in this order:
+
+  `A, B, Select, Start, Up, Down, Left, Right`
+
+- Matches original NES hardware behavior
+
+### Build Requirements
+
+- C compiler (C11 or later)
+- `make`
+- SDL2 (`libsdl2-dev` on Linux)  
 
 ---
 
