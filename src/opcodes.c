@@ -95,13 +95,13 @@ static void op_nop(CPU *cpu, Bus *bus);
 
 
 static const OpSpec op_specs[] = {
-    {0x00,"BRK",op_brk,AM_IMMEDIATE,7}, {0x01,"ORA",op_ora,AM_INDIRECT_X,6},     {0x02,"???",op_XXX,AM_IMPLIED,2},      {0x03,"???",op_XXX,AM_IMPLIED,8},   {0x04,"???",op_XXX,AM_IMPLIED,3},    {0x05,"ORA",op_ora,AM_ZEROPAGE,3},     {0x06,"ASL",op_asl,AM_ZEROPAGE,5},       {0x07,"???",op_XXX,AM_IMPLIED,5},   {0x08,"PHP",op_php,AM_IMPLIED,3},     {0x09,"ORA",op_ora,AM_IMMEDIATE,2},     {0x0A,"ASL",op_asl,AM_ACCUMULATOR,2},    {0x0B,"???",op_XXX,AM_IMPLIED,2},   {0x0C,"???",op_XXX,AM_IMPLIED,4},     {0x0D,"ORA",op_ora,AM_ABSOLUTE,4},     {0x0E,"ASL",op_asl,AM_ABSOLUTE,6},      {0x0F,"???",op_XXX,AM_IMPLIED,6}, 
+    {0x00,"BRK",op_brk,AM_IMPLIED,7}, {0x01,"ORA",op_ora,AM_INDIRECT_X,6},     {0x02,"???",op_XXX,AM_IMPLIED,2},      {0x03,"???",op_XXX,AM_IMPLIED,8},   {0x04,"???",op_XXX,AM_IMPLIED,3},    {0x05,"ORA",op_ora,AM_ZEROPAGE,3},     {0x06,"ASL",op_asl,AM_ZEROPAGE,5},       {0x07,"???",op_XXX,AM_IMPLIED,5},   {0x08,"PHP",op_php,AM_IMPLIED,3},     {0x09,"ORA",op_ora,AM_IMMEDIATE,2},     {0x0A,"ASL",op_asl,AM_ACCUMULATOR,2},    {0x0B,"???",op_XXX,AM_IMPLIED,2},   {0x0C,"???",op_XXX,AM_IMPLIED,4},     {0x0D,"ORA",op_ora,AM_ABSOLUTE,4},     {0x0E,"ASL",op_asl,AM_ABSOLUTE,6},      {0x0F,"???",op_XXX,AM_IMPLIED,6}, 
     {0x10,"BPL",op_bpl,AM_RELATIVE,2},  {0x11,"ORA",op_ora,AM_INDIRECT_Y,5},     {0x12,"???",op_XXX,AM_IMPLIED,2},      {0x13,"???",op_XXX,AM_IMPLIED,8},   {0x14,"???",op_XXX,AM_IMPLIED,4},    {0x15,"ORA",op_ora,AM_ZEROPAGE_X,4},   {0x16,"ASL",op_asl,AM_ZEROPAGE_X,6},     {0x17,"???",op_XXX,AM_IMPLIED,6},   {0x18,"CLC",op_clc,AM_IMPLIED,2},     {0x19,"ORA",op_ora,AM_ABSOLUTE_Y,4},    {0x1A,"???",op_XXX,AM_IMPLIED,2},        {0x1B,"???",op_XXX,AM_IMPLIED,7},   {0x1C,"???",op_XXX,AM_IMPLIED,4},     {0x1D,"ORA",op_ora,AM_ABSOLUTE_X,4},   {0x1E,"ASL",op_asl,AM_ABSOLUTE_X,7},    {0x1F,"???",op_XXX,AM_IMPLIED,7},
-    {0x20,"JSR",op_jsr,AM_ABSOLUTE,6},  {0x21,"AND",op_and,AM_INDIRECT_X,6},     {0x22,"???",op_XXX,AM_IMPLIED,2},      {0x23,"???",op_XXX,AM_IMPLIED,8},   {0x24,"BIT",op_bit,AM_ZEROPAGE,3},   {0x25,"AND",op_and,AM_ZEROPAGE,3},     {0x26,"ROL",op_rol,AM_ZEROPAGE,5},       {0x27,"???",op_XXX,AM_IMPLIED,5},   {0x28,"PLP",op_plp,AM_IMPLIED,4},     {0x29,"AND",op_and,AM_IMMEDIATE,2},     {0x2A,"ROL",op_rol,AM_IMPLIED,2},        {0x2B,"???",op_XXX,AM_IMPLIED,2},   {0x2C,"BIT",op_bit,AM_ABSOLUTE,4},    {0x2D,"AND",op_and,AM_ABSOLUTE,4},     {0x2E,"ROL",op_rol,AM_ABSOLUTE,6},      {0x2F,"???",op_XXX,AM_IMPLIED,6},
+    {0x20,"JSR",op_jsr,AM_ABSOLUTE,6},  {0x21,"AND",op_and,AM_INDIRECT_X,6},     {0x22,"???",op_XXX,AM_IMPLIED,2},      {0x23,"???",op_XXX,AM_IMPLIED,8},   {0x24,"BIT",op_bit,AM_ZEROPAGE,3},   {0x25,"AND",op_and,AM_ZEROPAGE,3},     {0x26,"ROL",op_rol,AM_ZEROPAGE,5},       {0x27,"???",op_XXX,AM_IMPLIED,5},   {0x28,"PLP",op_plp,AM_IMPLIED,4},     {0x29,"AND",op_and,AM_IMMEDIATE,2},     {0x2A,"ROL",op_rol,AM_ACCUMULATOR,2},        {0x2B,"???",op_XXX,AM_IMPLIED,2},   {0x2C,"BIT",op_bit,AM_ABSOLUTE,4},    {0x2D,"AND",op_and,AM_ABSOLUTE,4},     {0x2E,"ROL",op_rol,AM_ABSOLUTE,6},      {0x2F,"???",op_XXX,AM_IMPLIED,6},
     {0x30,"BMI",op_bmi,AM_RELATIVE,2},  {0x31,"AND",op_and,AM_INDIRECT_Y,5},     {0x32,"???",op_XXX,AM_IMPLIED,2},      {0x33,"???",op_XXX,AM_IMPLIED,8},   {0x34,"???",op_XXX,AM_IMPLIED,4},    {0x35,"AND",op_and,AM_ZEROPAGE_X,4},   {0x36,"ROL",op_rol,AM_ZEROPAGE_X,6},     {0x37,"???",op_XXX,AM_IMPLIED,6},   {0x38,"SEC",op_sec,AM_IMPLIED,2},     {0x39,"AND",op_and,AM_ABSOLUTE_Y,4},    {0x3A,"???",op_XXX,AM_IMPLIED,2},        {0x3B,"???",op_XXX,AM_IMPLIED,7},   {0x3C,"???",op_XXX,AM_IMPLIED,4},     {0x3D,"AND",op_and,AM_ABSOLUTE_X,4},   {0x3E,"ROL",op_rol,AM_ABSOLUTE_X,7},    {0x3F,"???",op_XXX,AM_IMPLIED,7},
-    {0x40,"RTI",op_rti,AM_IMPLIED,6},   {0x41,"EOR",op_eor,AM_INDIRECT_X,6},     {0x42,"???",op_XXX,AM_IMPLIED,2},      {0x43,"???",op_XXX,AM_IMPLIED,8},   {0x44,"???",op_XXX,AM_IMPLIED,3},    {0x45,"EOR",op_eor,AM_ZEROPAGE,3},     {0x46,"LSR",op_lsr,AM_ZEROPAGE,5},       {0x47,"???",op_XXX,AM_IMPLIED,5},   {0x48,"PHA",op_pha,AM_IMPLIED,3},     {0x49,"EOR",op_eor,AM_IMMEDIATE,2},     {0x4A,"LSR",op_lsr,AM_IMPLIED,2},        {0x4B,"???",op_XXX,AM_IMPLIED,2},   {0x4C,"JMP",op_jmp,AM_ABSOLUTE,3},    {0x4D,"EOR",op_eor,AM_ABSOLUTE,4},     {0x4E,"LSR",op_lsr,AM_ABSOLUTE,6},      {0x4F,"???",op_XXX,AM_IMPLIED,6},
+    {0x40,"RTI",op_rti,AM_IMPLIED,6},   {0x41,"EOR",op_eor,AM_INDIRECT_X,6},     {0x42,"???",op_XXX,AM_IMPLIED,2},      {0x43,"???",op_XXX,AM_IMPLIED,8},   {0x44,"???",op_XXX,AM_IMPLIED,3},    {0x45,"EOR",op_eor,AM_ZEROPAGE,3},     {0x46,"LSR",op_lsr,AM_ZEROPAGE,5},       {0x47,"???",op_XXX,AM_IMPLIED,5},   {0x48,"PHA",op_pha,AM_IMPLIED,3},     {0x49,"EOR",op_eor,AM_IMMEDIATE,2},     {0x4A,"LSR",op_lsr,AM_ACCUMULATOR,2},        {0x4B,"???",op_XXX,AM_IMPLIED,2},   {0x4C,"JMP",op_jmp,AM_ABSOLUTE,3},    {0x4D,"EOR",op_eor,AM_ABSOLUTE,4},     {0x4E,"LSR",op_lsr,AM_ABSOLUTE,6},      {0x4F,"???",op_XXX,AM_IMPLIED,6},
     {0x50,"BVC",op_bvc,AM_RELATIVE,2},  {0x51,"EOR",op_eor,AM_INDIRECT_Y,5},     {0x52,"???",op_XXX,AM_IMPLIED,2},      {0x53,"???",op_XXX,AM_IMPLIED,8},   {0x54,"???",op_XXX,AM_IMPLIED,4},    {0x55,"EOR",op_eor,AM_ZEROPAGE_X,4},   {0x56,"LSR",op_lsr,AM_ZEROPAGE_X,6},     {0x57,"???",op_XXX,AM_IMPLIED,6},   {0x58,"CLI",op_cli,AM_IMPLIED,2},     {0x59,"EOR",op_eor,AM_ABSOLUTE_Y,4},    {0x5A,"???",op_XXX,AM_IMPLIED,2},        {0x5B,"???",op_XXX,AM_IMPLIED,7},   {0x5C,"???",op_XXX,AM_IMPLIED,4},     {0x5D,"EOR",op_eor,AM_ABSOLUTE_X,4},   {0x5E,"LSR",op_lsr,AM_ABSOLUTE_X,7},    {0x5F,"???",op_XXX,AM_IMPLIED,7},
-    {0x60,"RTS",op_rts,AM_IMPLIED,6},   {0x61,"ADC",op_adc,AM_INDIRECT_X,6},     {0x62,"???",op_XXX,AM_IMPLIED,2},      {0x63,"???",op_XXX,AM_IMPLIED,8},   {0x64,"???",op_XXX,AM_IMPLIED,3},    {0x65,"ADC",op_adc,AM_ZEROPAGE,3},     {0x66,"ROR",op_ror,AM_ZEROPAGE,5},       {0x67,"???",op_XXX,AM_IMPLIED,5},   {0x68,"PLA",op_pla,AM_IMPLIED,4},     {0x69,"ADC",op_adc,AM_IMMEDIATE,2},     {0x6A,"ROR",op_ror,AM_IMPLIED,2},        {0x6B,"???",op_XXX,AM_IMPLIED,2},   {0x6C,"JMP",op_jmp,AM_INDIRECT,5},    {0x6D,"ADC",op_adc,AM_ABSOLUTE,4},     {0x6E,"ROR",op_ror,AM_ABSOLUTE,6},      {0x6F,"???",op_XXX,AM_IMPLIED,6},
+    {0x60,"RTS",op_rts,AM_IMPLIED,6},   {0x61,"ADC",op_adc,AM_INDIRECT_X,6},     {0x62,"???",op_XXX,AM_IMPLIED,2},      {0x63,"???",op_XXX,AM_IMPLIED,8},   {0x64,"???",op_XXX,AM_IMPLIED,3},    {0x65,"ADC",op_adc,AM_ZEROPAGE,3},     {0x66,"ROR",op_ror,AM_ZEROPAGE,5},       {0x67,"???",op_XXX,AM_IMPLIED,5},   {0x68,"PLA",op_pla,AM_IMPLIED,4},     {0x69,"ADC",op_adc,AM_IMMEDIATE,2},     {0x6A,"ROR",op_ror,AM_ACCUMULATOR,2},        {0x6B,"???",op_XXX,AM_IMPLIED,2},   {0x6C,"JMP",op_jmp,AM_INDIRECT,5},    {0x6D,"ADC",op_adc,AM_ABSOLUTE,4},     {0x6E,"ROR",op_ror,AM_ABSOLUTE,6},      {0x6F,"???",op_XXX,AM_IMPLIED,6},
     {0x70,"BVS",op_bvs,AM_RELATIVE,2},  {0x71,"ADC",op_adc,AM_INDIRECT_Y,5},     {0x72,"???",op_XXX,AM_IMPLIED,2},      {0x73,"???",op_XXX,AM_IMPLIED,8},   {0x74,"???",op_XXX,AM_IMPLIED,4},    {0x75,"ADC",op_adc,AM_ZEROPAGE_X,4},   {0x76,"ROR",op_ror,AM_ZEROPAGE_X,6},     {0x77,"???",op_XXX,AM_IMPLIED,6},   {0x78,"SEI",op_sei,AM_IMPLIED,2},     {0x79,"ADC",op_adc,AM_ABSOLUTE_Y,4},    {0x7A,"???",op_XXX,AM_IMPLIED,2},        {0x7B,"???",op_XXX,AM_IMPLIED,7},   {0x7C,"???",op_XXX,AM_IMPLIED,4},     {0x7D,"ADC",op_adc,AM_ABSOLUTE_X,4},   {0x7E,"ROR",op_ror,AM_ABSOLUTE_X,7},    {0x7F,"???",op_XXX,AM_IMPLIED,7},
     {0x80,"???",op_XXX,AM_IMPLIED,2},   {0x81,"STA",op_sta,AM_INDIRECT_X,6},     {0x82,"???",op_XXX,AM_IMPLIED,2},      {0x83,"???",op_XXX,AM_IMPLIED,6},   {0x84,"STY",op_sty,AM_ZEROPAGE,3},   {0x85,"STA",op_sta,AM_ZEROPAGE,3},     {0x86,"STX",op_stx,AM_ZEROPAGE,3},       {0x87,"???",op_XXX,AM_IMPLIED,3},   {0x88,"DEY",op_dey,AM_IMPLIED,2},     {0x89,"???",op_XXX,AM_IMPLIED,2},       {0x8A,"TXA",op_txa,AM_IMPLIED,2},        {0x8B,"???",op_XXX,AM_IMPLIED,2},   {0x8C,"STY",op_sty,AM_ABSOLUTE,4},    {0x8D,"STA",op_sta,AM_ABSOLUTE,4},     {0x8E,"STX",op_stx,AM_ABSOLUTE,4},      {0x8F,"???",op_XXX,AM_IMPLIED,4},
     {0x90,"BCC",op_bcc,AM_RELATIVE,2},  {0x91,"STA",op_sta,AM_INDIRECT_Y,6},     {0x92,"???",op_XXX,AM_IMPLIED,2},      {0x93,"???",op_XXX,AM_IMPLIED,6},   {0x94,"STY",op_sty,AM_ZEROPAGE_X,4}, {0x95,"STA",op_sta,AM_ZEROPAGE_X,4},   {0x96,"STX",op_stx,AM_ZEROPAGE_Y,4},     {0x97,"???",op_XXX,AM_IMPLIED,4},   {0x98,"TYA",op_tya,AM_IMPLIED,2},     {0x99,"STA",op_sta,AM_ABSOLUTE_Y,5},    {0x9A,"TXS",op_txs,AM_IMPLIED,2},        {0x9B,"???",op_XXX,AM_IMPLIED,5},   {0x9C,"???",op_XXX,AM_IMPLIED,5},     {0x9D,"STA",op_sta,AM_ABSOLUTE_X,5},   {0x9E,"???",op_XXX,AM_ABSOLUTE_X,5},    {0x9F,"???",op_XXX,AM_IMPLIED,5},
@@ -301,14 +301,12 @@ static void op_nop(CPU *cpu, Bus *bus) {
 // Loads a value from memory (or immediate) into the A register.
 // Affects: Zero (Z), Negative (N)
 static void op_lda(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
 
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
     // Fetch the value based on addressing mode 
     uint8_t value; 
-    if (op->addr_mode == AM_IMMEDIATE) { 
+    if (cpu->addr_mode == AM_IMMEDIATE) { 
         value = cpu->fetched; 
     } else { 
         value = bus_read(bus, addr);
@@ -319,11 +317,9 @@ static void op_lda(CPU *cpu, Bus *bus) {
 }
 
 static void op_ldx(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
-    uint8_t value = (op->addr_mode == AM_IMMEDIATE)
+    uint8_t value = (cpu->addr_mode == AM_IMMEDIATE)
         ? cpu->fetched
         : bus_read(bus, addr);
 
@@ -332,11 +328,9 @@ static void op_ldx(CPU *cpu, Bus *bus) {
 }
 
 static void op_ldy(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
-    uint8_t value = (op->addr_mode == AM_IMMEDIATE)
+    uint8_t value = (cpu->addr_mode == AM_IMMEDIATE)
         ? cpu->fetched
         : bus_read(bus, addr);
 
@@ -346,24 +340,18 @@ static void op_ldy(CPU *cpu, Bus *bus) {
 
 // Writes the value in A into memory at the specified address.
 static void op_sta(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
 
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
     bus_write(bus, addr, cpu->A);
 }
 
 static void op_stx(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
     bus_write(bus, addr, cpu->X);
 }
 
 static void op_sty(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
     bus_write(bus, addr, cpu->Y);
 }
 
@@ -438,9 +426,7 @@ static void op_plp(CPU *cpu, Bus *bus) {
 // 3. Increments/Decrements
 
 static void op_dec(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
     uint8_t v = bus_read(bus, addr);
     v -= 1;
@@ -462,9 +448,7 @@ static void op_dey(CPU *cpu, Bus *bus) {
 }
 
 static void op_inc(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
     uint8_t v = bus_read(bus, addr);
     v += 1;
@@ -490,11 +474,9 @@ static void op_iny(CPU *cpu, Bus *bus) {
 // 4. Arithmetic
 
 static void op_adc(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
-    uint8_t value = (op->addr_mode == AM_IMMEDIATE)
+    uint8_t value = (cpu->addr_mode == AM_IMMEDIATE)
         ? cpu->fetched
         : bus_read(bus, addr);
 
@@ -508,11 +490,9 @@ static void op_adc(CPU *cpu, Bus *bus) {
 }
 
 static void op_sbc(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
-    uint8_t value = (op->addr_mode == AM_IMMEDIATE)
+    uint8_t value = (cpu->addr_mode == AM_IMMEDIATE)
         ? cpu->fetched
         : bus_read(bus, addr);
 
@@ -527,11 +507,9 @@ static void op_sbc(CPU *cpu, Bus *bus) {
 
 // 5. Logical
 static void op_and(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
-    uint8_t v = (op->addr_mode == AM_IMMEDIATE)
+    uint8_t v = (cpu->addr_mode == AM_IMMEDIATE)
         ? cpu->fetched
         : bus_read(bus, addr);
 
@@ -540,11 +518,9 @@ static void op_and(CPU *cpu, Bus *bus) {
 }
 
 static void op_ora(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
-    uint8_t v = (op->addr_mode == AM_IMMEDIATE)
+    uint8_t v = (cpu->addr_mode == AM_IMMEDIATE)
         ? cpu->fetched
         : bus_read(bus, addr);
 
@@ -553,11 +529,9 @@ static void op_ora(CPU *cpu, Bus *bus) {
 }
 
 static void op_eor(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
-    uint8_t v = (op->addr_mode == AM_IMMEDIATE)
+    uint8_t v = (cpu->addr_mode == AM_IMMEDIATE)
         ? cpu->fetched
         : bus_read(bus, addr);
 
@@ -567,17 +541,15 @@ static void op_eor(CPU *cpu, Bus *bus) {
 
 // 6. Shift & Rotate
 static void op_asl(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
 
-    if (op->addr_mode == AM_ACCUMULATOR) {
+    if (cpu->addr_mode == AM_ACCUMULATOR) {
         uint8_t v = cpu->A;
         set_flag(cpu, FLAG_C, v & 0x80);
         v <<= 1;
         cpu->A = v;
         update_zero_and_negative_flags(cpu, v);
     } else {
-        uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+        uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
         uint8_t v = bus_read(bus, addr);
         set_flag(cpu, FLAG_C, v & 0x80);
         v <<= 1;
@@ -587,17 +559,15 @@ static void op_asl(CPU *cpu, Bus *bus) {
 }
 
 static void op_lsr(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
 
-    if (op->addr_mode == AM_ACCUMULATOR) {
+    if (cpu->addr_mode == AM_ACCUMULATOR) {
         uint8_t v = cpu->A;
         set_flag(cpu, FLAG_C, v & 0x01);
         v >>= 1;
         cpu->A = v;
         update_zero_and_negative_flags(cpu, v);
     } else {
-        uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+        uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
         uint8_t v = bus_read(bus, addr);
         set_flag(cpu, FLAG_C, v & 0x01);
         v >>= 1;
@@ -607,19 +577,17 @@ static void op_lsr(CPU *cpu, Bus *bus) {
 }
 
 static void op_rol(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
 
     uint8_t carry_in = (cpu->P & FLAG_C) ? 1 : 0;
 
-    if (op->addr_mode == AM_ACCUMULATOR) {
+    if (cpu->addr_mode == AM_ACCUMULATOR) {
         uint8_t v = cpu->A;
         set_flag(cpu, FLAG_C, v & 0x80);
         v = (v << 1) | carry_in;
         cpu->A = v;
         update_zero_and_negative_flags(cpu, v);
     } else {
-        uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+        uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
         uint8_t v = bus_read(bus, addr);
         set_flag(cpu, FLAG_C, v & 0x80);
         v = (v << 1) | carry_in;
@@ -629,19 +597,17 @@ static void op_rol(CPU *cpu, Bus *bus) {
 }
 
 static void op_ror(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
 
     uint8_t carry_in = (cpu->P & FLAG_C) ? 0x80 : 0;
 
-    if (op->addr_mode == AM_ACCUMULATOR) {
+    if (cpu->addr_mode == AM_ACCUMULATOR) {
         uint8_t v = cpu->A;
         set_flag(cpu, FLAG_C, v & 0x01);
         v = (v >> 1) | carry_in;
         cpu->A = v;
         update_zero_and_negative_flags(cpu, v);
     } else {
-        uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+        uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
         uint8_t v = bus_read(bus, addr);
         set_flag(cpu, FLAG_C, v & 0x01);
         v = (v >> 1) | carry_in;
@@ -665,11 +631,9 @@ static void op_clv(CPU *cpu, Bus *bus) { (void)bus; cpu->P &= ~FLAG_V; }
 // 8. Comparisons
 
 static void op_cmp(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
-    uint8_t v = (op->addr_mode == AM_IMMEDIATE)
+    uint8_t v = (cpu->addr_mode == AM_IMMEDIATE)
         ? cpu->fetched
         : bus_read(bus, addr);
 
@@ -680,11 +644,9 @@ static void op_cmp(CPU *cpu, Bus *bus) {
 }
 
 static void op_cpx(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
-    uint8_t v = (op->addr_mode == AM_IMMEDIATE)
+    uint8_t v = (cpu->addr_mode == AM_IMMEDIATE)
         ? cpu->fetched
         : bus_read(bus, addr);
 
@@ -695,11 +657,9 @@ static void op_cpx(CPU *cpu, Bus *bus) {
 }
 
 static void op_cpy(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
-    uint8_t v = (op->addr_mode == AM_IMMEDIATE)
+    uint8_t v = (cpu->addr_mode == AM_IMMEDIATE)
         ? cpu->fetched
         : bus_read(bus, addr);
 
@@ -711,9 +671,7 @@ static void op_cpy(CPU *cpu, Bus *bus) {
 
 // 9. Bit Test
 static void op_bit(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    uint16_t addr = resolve_address(cpu, bus, op->addr_mode);
+    uint16_t addr = resolve_address(cpu, bus, cpu->addr_mode);
 
     uint8_t v = bus_read(bus, addr);
 
@@ -732,6 +690,7 @@ static void branch_if(CPU *cpu, bool condition) {
     int8_t offset = (int8_t)bus_read(bus, cpu->PC++);
 
     if (condition) {
+        cpu->cycles++;
         uint16_t old_pc = cpu->PC;
         cpu->PC += offset;
 
@@ -753,9 +712,7 @@ static void op_bvs(CPU *cpu, Bus *bus) { (void)bus; branch_if(cpu,  (cpu->P & FL
 
 // 11. Jumps & Subroutines
 static void op_jmp(CPU *cpu, Bus *bus) {
-    uint8_t opcode = bus_read(bus, cpu->PC - 1);
-    Op *op = &opcode_table[opcode];
-    cpu->PC = resolve_address(cpu, bus, op->addr_mode);
+    cpu->PC = resolve_address(cpu, bus, cpu->addr_mode);
 }
 
 static void op_jsr(CPU *cpu, Bus *bus) {

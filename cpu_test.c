@@ -268,6 +268,12 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // --- WRAM TEST: ensure $6000 is writable ---
+    memory_write(mem, 0x6000, 0xAA);
+    printf("TEST WRITE TO $6000: %02X\n", memory_read(mem, 0x6000));
+    // -------------------------------------------
+
+
     // Initialize, load reset vector, clear registers
     init_opcode_table();   
     cpu_reset(cpu);
@@ -309,6 +315,7 @@ int main(int argc, char **argv)
         cpu_step(cpu);
 
         uint8_t status = bus_read(bus, 0x6000);
+        printf("STATUS @ $6000 = %02X\n", status);
         if (status == 0x80) {
             fprintf(stderr, "nestest PASSED (0x80 at $6000)\n");
             break;

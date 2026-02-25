@@ -48,7 +48,7 @@ void cpu_reset(CPU *cpu) {
     uint16_t hi = cpu_read8(cpu, 0xFFFD);
     cpu->PC = (hi << 8) | lo;
     cpu->SP = 0xFD;
-    cpu->P = FLAG_U;
+    cpu->P = FLAG_U | FLAG_I;
     cpu->A = cpu->X = cpu->Y = 0;
     cpu->cycles = 7; // reset takes time
 }

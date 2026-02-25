@@ -10,10 +10,12 @@ Bus *bus_create(Memory *mem) {
 }
 
 void bus_write(Bus *bus, uint16_t addr, uint8_t value) {
-    // ROM region is read-only
+    // $8000–$FFFF is PRG ROM (read-only)
     if (addr >= 0x8000) {
         return;
     }
+
+    // Everything below $8000 is writable (RAM, I/O, WRAM)
     memory_write(bus->mem, addr, value);
 }
 
