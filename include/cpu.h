@@ -18,6 +18,7 @@ struct CPU {
     uint8_t P;    // Status flags
 
     // cycles count
+    uint8_t page_crossed;
     uint64_t cycles; // 
 
     // pointer to memory/bus
@@ -55,5 +56,7 @@ uint8_t cpu_read8(CPU *cpu, uint16_t addr);
 // helpers to access status register
 void set_flag(CPU *cpu, uint8_t flag, bool value);
 bool get_flag(CPU *cpu, uint8_t flag);
+
+bool page_crossed;
 
 #endif // CPU_H

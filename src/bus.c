@@ -1,6 +1,8 @@
 #include "bus.h"
 #include <stdlib.h>
 
+#include "../beaverNES-anjelica-dev/cartridge.h"
+
 Bus *bus_create(Memory *mem) {
     Bus *bus = malloc(sizeof(Bus));
     bus->mem = mem;
@@ -9,25 +11,27 @@ Bus *bus_create(Memory *mem) {
     return bus;
 }
 
-void bus_write(Bus *bus, uint16_t addr, uint8_t value) {
-    // $8000–$FFFF is PRG ROM (read-only)
+uint8_t bus_read(Bus *bus, uint16_t addr) {
+    // PRG/mapper region
     if (addr >= 0x8000) {
+        uint8_t v = 0xFF;
+        if (bus->rom && cart_cpu_read(bus->rom, addr, &v)) {
+            return v;
+        }
+        return 0xFF;
+    }
+
+    return memory_read(bus->mem, addr);
+}
+
+void bus_write(Bus *bus, uint16_t addr, uint8_t value) {
+    // PRG/mapper region (bank switching, etc.)
+    if (addr >= 0x8000) {
+        if (bus->rom) {
+            cart_cpu_write(bus->rom, addr, value);
+        }
         return;
     }
 
-    // Everything below $8000 is writable (RAM, I/O, WRAM)
     memory_write(bus->mem, addr, value);
-}
-
-uint8_t bus_read(Bus *bus, uint16_t addr) {
-    // PRG ROM region
-    if (addr >= 0x8000) {
-        uint32_t index = addr - 0x8000;
-
-        if (bus->rom && bus->rom->header.prg_rom_banks == 1) {
-            index %= 0x4000; // mirror 16 KB PRG
-        }
-        return bus->rom ? bus->rom->prg[index] : 0xFF;
-    }
-    return memory_read(bus->mem, addr);
 }

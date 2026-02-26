@@ -31,22 +31,22 @@ typedef enum {
 
 // Length table (1–3 bytes)
 static const uint8_t OPCODE_LEN[256] = {
-    1,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    2,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    3,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    2,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    1,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    2,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    1,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    2,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    1,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    2,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    1,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    2,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    1,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    2,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    1,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
-    2,2,1,1,1,2,2,1, 1,2,1,1,3,3,3,1,
+  1,2,0,0,0,2,2,0, 1,2,1,0,0,3,3,0,
+  2,2,0,0,0,2,2,0, 1,3,1,0,0,3,3,0,
+  3,2,0,0,2,2,2,0, 1,2,1,0,3,3,3,0,
+  2,2,0,0,0,2,2,0, 1,3,1,0,0,3,3,0,
+  1,2,0,0,0,2,2,0, 1,2,1,0,3,3,3,0,
+  2,2,0,0,0,2,2,0, 1,3,1,0,0,3,3,0,
+  1,2,0,0,0,2,2,0, 1,2,1,0,3,3,3,0,
+  2,2,0,0,0,2,2,0, 1,3,1,0,0,3,3,0,
+  2,2,0,0,2,2,2,0, 1,2,1,0,3,3,3,0,
+  2,2,0,0,2,2,2,0, 1,3,1,0,0,3,3,0,
+  2,2,2,0,2,2,2,0, 1,2,1,0,3,3,3,0,
+  2,2,0,0,2,2,2,0, 1,3,1,0,3,3,3,0,
+  2,2,2,0,2,2,2,0, 1,2,1,0,3,3,3,0,
+  2,2,0,0,0,2,2,0, 1,3,1,0,0,3,3,0,
+  2,2,0,0,2,2,2,0, 1,2,1,0,3,3,3,0,
+  2,2,0,0,0,2,2,0, 1,3,1,0,0,3,3,0
 };
 
 // Mnemonics
@@ -226,56 +226,22 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // Load rom into cartridge struct
+    // --- Load ROM ---
     Cartridge cart;
     char err[256];
     if (!rom_load(argv[1], &cart, err, sizeof(err))) {
-        fprintf(stderr, "rom load failed: %s\n", err);
+        fprintf(stderr, "ROM load failed: %s\n", err);
         return 1;
     }
 
-    // Create CPU memory
+    // --- Create memory + bus + CPU ---
     Memory *mem = memory_create();
-    if (!mem) {
-        fprintf(stderr, "failed to create memory\n");
-        rom_free(&cart);
-        return 1;
-    }
-
-    // NROM mapping
-    if (cart.prg_size == 16384u) {
-        for (size_t i = 0; i < 16384u; ++i) {
-            memory_write(mem, 0x8000 + i, cart.prg[i]);
-            memory_write(mem, 0xC000 + i, cart.prg[i]);
-        }
-    } else {
-        for (size_t i = 0; i < 32768u && i < cart.prg_size; ++i)
-            memory_write(mem, 0x8000 + i, cart.prg[i]);
-    }
-
     Bus *bus = bus_create(mem);
-    bus->rom = &cart;
-    if (!bus) {
-        fprintf(stderr, "failed to create bus\n");
-        rom_free(&cart);
-        return 1;
-    }
+    bus->rom = &cart;     // attach ROM ONCE
 
     CPU *cpu = cpu_create(bus);
-    if (!cpu) {
-        fprintf(stderr, "failed to create cpu\n");
-        rom_free(&cart);
-        return 1;
-    }
 
-    // --- WRAM TEST: ensure $6000 is writable ---
-    memory_write(mem, 0x6000, 0xAA);
-    printf("TEST WRITE TO $6000: %02X\n", memory_read(mem, 0x6000));
-    // -------------------------------------------
-
-
-    // Initialize, load reset vector, clear registers
-    init_opcode_table();   
+    init_opcode_table();
     cpu_reset(cpu);
 
     // nestest entry point
@@ -285,43 +251,58 @@ int main(int argc, char **argv)
     bus_write(bus, 0x6000, 0x00);
 
     const int max_steps = 2000000;
-    for (int step = 0; step < max_steps; ++step) {
-        uint16_t pc = cpu->PC; // current program counter
-        uint8_t op = bus_read(bus, pc); // read the opcode byte
-        uint8_t len = OPCODE_LEN[op]; // look up instruction length
-        AddrMode mode = ADDR_MODE[op]; // look up addressing mode
-        const char *mn = MNEMONIC[op]; // look up mnemonic 
 
-        // Bytes to print for tracing (opcode + operands)
+    for (int step = 0; step < max_steps; ++step) {
+
+        uint16_t pc = cpu->PC;
+        uint8_t op = bus_read(bus, pc);
+        uint8_t len = OPCODE_LEN[op];
+        AddrMode mode = ADDR_MODE[op];
+        const char *mn = MNEMONIC[op];
+
         uint8_t b1 = op;
         uint8_t b2 = (len >= 2) ? bus_read(bus, pc + 1) : 0;
         uint8_t b3 = (len == 3) ? bus_read(bus, pc + 2) : 0;
 
-        // Format operand into nestest-style text
-        char operand[64];
-        format_operand(operand, sizeof(operand), mode, pc, b2, b3, cpu, bus);
+        char operand[64] = {0};
 
-        printf("%04X  %02X", pc, b1);
-        if (len >= 2) printf(" %02X", b2); else printf("   ");
-        if (len == 3)  printf(" %02X", b3); else printf("   ");
+        if (op == 0x4C || op == 0x20) {
+            uint16_t addr = b2 | (b3 << 8);
+            snprintf(operand, sizeof(operand), "$%04X", addr);
+        } else {
+            format_operand(operand, sizeof(operand), mode, pc, b2, b3, cpu, bus);
+        }
 
-        printf("  %-3s %-28s A:%02X X:%02X Y:%02X P:%02X SP:%02X PPU:%3d,%3d CYC:%llu\n",
-               mn,
-               operand,
-               cpu->A, cpu->X, cpu->Y, cpu->P, cpu->SP,
-               0, 0,
-               (unsigned long long)cpu->cycles);
+        // --- Print nestest format ---
+        printf("%04X  ", pc);
+
+        printf("%02X ", b1);
+        if (len >= 2) printf("%02X ", b2); else printf("   ");
+        if (len == 3) printf("%02X", b3); else printf("  ");
+
+        printf("  %-3s %-28s", mn, operand);
+
+        printf("A:%02X X:%02X Y:%02X P:%02X SP:%02X ",
+            cpu->A, cpu->X, cpu->Y, cpu->P, cpu->SP);
+
+        printf("PPU:%3d,%3d ", 0, 0);
+        printf("CYC:%llu\n", (unsigned long long)cpu->cycles);
+
+        if (op == 0x04) {
+    printf("CPU DEBUG: op=04 mode=%d\n",
+           cpu->addr_mode);
+}
+
 
         cpu_step(cpu);
 
         uint8_t status = bus_read(bus, 0x6000);
-        printf("STATUS @ $6000 = %02X\n", status);
         if (status == 0x80) {
-            fprintf(stderr, "nestest PASSED (0x80 at $6000)\n");
+            fprintf(stderr, "nestest PASSED\n");
             break;
         }
         if (status == 0x01) {
-            fprintf(stderr, "nestest FAILED (0x01 at $6000)\n");
+            fprintf(stderr, "nestest FAILED\n");
             break;
         }
     }
