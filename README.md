@@ -10,3 +10,9 @@ To test CPU with nestest.nes, run the following commands:
 
 This should create an output.txt file in your directory.
 You can now compare and contrast this .txt file with the offical nestest.log file located in rom/
+
+    Using compareNesTest.py, we can run:
+
+        python3 compareNesTest.py
+
+    and see where the two files mismatch!
