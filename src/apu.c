@@ -43,8 +43,6 @@ static const uint8_t length_table[32] = {
 
 /**
  * @brief NTSC/PAL sequence table used for the triangle wave generator.
- * 
- * 
  */
 static const uint8_t triangle_seq[32] = {
   15,14,13,12,11,10, 9, 8,
@@ -171,9 +169,12 @@ void init_apu(APU *apu, Region region) {
  * Executes for every APU tick. Handles each audio channel.
  */
 float apu_tick(APU *apu) {
-    // advance pulse timers
-    pulse_tick(&apu->pulse1);
-    pulse_tick(&apu->pulse2);
+    // Pulse timers clock at the APU rate, which is every 2 CPU cycles.
+    // Only advance them on even cycles to match NES hardware behaviour.
+    if (apu->cycles % 2 == 0) {
+        pulse_tick(&apu->pulse1);
+        pulse_tick(&apu->pulse2);
+    }
 
     // advance triangle timer
     triangle_tick(&apu->triangle);
@@ -236,13 +237,46 @@ float apu_tick(APU *apu) {
 }
 
 /**
- * @brief APU reset function.
- * 
- * Limit to reseting the cycle count right now. Will handle 
- * channel resets in the future. Not really used yet.
+ * @brief Full APU reset.
+ *
+ * Resets every channel and all frame-counter state to power-on defaults
+ * while preserving the region setting (NTSC/PAL).  After this call the
+ * APU is in the same state as a freshly initialised one without needing
+ * to know the region again.
  */
 void apu_reset(APU *apu) {
-    apu->cycles = 0;
+    /* preserve caller's region */
+    Region region = apu->region;
+
+    /* Reset register mirror */
+    for (int i = 0; i < 4; i++) {
+        apu->registers.pulse1[i] = 0;
+        apu->registers.pulse2[i] = 0;
+        apu->registers.triangle[i] = 0;
+        apu->registers.noise[i] = 0;
+        apu->registers.dmc[i] = 0;
+    }
+    apu->registers.status = 0;
+    apu->registers.frame_counter = 0;
+
+    /* Reset all channels to power-on defaults */
+    apu->pulse1   = init_pulse(1);
+    apu->pulse2   = init_pulse(2);
+    apu->triangle = init_triangle();
+    apu->noise    = init_noise();
+    apu->delta    = init_dmc();
+
+    /* Reset frame sequencer */
+    apu->cycles              = 0;
+    apu->frame_mode          = 0;
+    apu->frame_irq_inhibit   = 1;
+    apu->frame_interrupt     = 0;
+    apu->frame_counter_cycles = 0;
+
+    apu->region = region;
+
+    if (DEBUG) 
+        printf("APU Reset\n");
 }
 
 /**
@@ -563,6 +597,10 @@ int half_frame_tick(APU *apu) {
 
 /**
  * @brief Check if frame should reset and handle IRQ.
+ * 
+ * The reset point is (last_fire_cycle + 1) so that the final half-frame/
+ * quarter-frame tick at cycle 14915 (4-step) or 18641 (5-step) fires
+ * BEFORE the counter is cleared.
  */
 void clock_frame_counter(APU *apu) {
     apu->frame_counter_cycles++;
@@ -570,9 +608,11 @@ void clock_frame_counter(APU *apu) {
     uint16_t reset_point;
     
     if (apu->region == PAL) {
-        reset_point = apu->frame_mode ? 41561 : 33254;
+        reset_point = apu->frame_mode ? 41562 : 33255;
     } else {
-        reset_point = apu->frame_mode ? 18641 : 14915;
+        //  NTSC 4-step: fires at 7457 & 14915 → reset after 14915 is seen
+        //  NTSC 5-step: fires at 7457 & 18641 → reset after 18641 is seen
+        reset_point = apu->frame_mode ? 18642 : 14916;
     }
     
     if (apu->frame_counter_cycles >= reset_point) {
@@ -729,7 +769,7 @@ Delta init_dmc() {
  */
 void pulse_tick(Pulse *p) {
     if (p->timer_counter == 0) {
-        p->timer_counter = p->timer_reload + 1;
+        p->timer_counter = p->timer_reload;  // counts T..0 = T+1 APU ticks per step
         p->seq_pos = (p->seq_pos + 1) & 7;
     } else {
         p->timer_counter--;
@@ -792,16 +832,18 @@ void clock_pulse_envelope(Pulse *p) {
  * Implements a weird quirk that exists in the NES.
  */
 uint16_t pulse_sweep_target(Pulse *p) {
-    uint16_t change = p->timer_reload >> p->sweep_shift;
+    int32_t change = (int32_t)(p->timer_reload >> p->sweep_shift);
+    int32_t target;
 
     if (p->sweep_negate) {
-        if (p->id == 1)
-            return p->timer_reload - change - 1;
-        else
-            return p->timer_reload - change;
+        // Pulse 1 subtracts one extra (ones-complement quirk)
+        target = (int32_t)p->timer_reload - change - (p->id == 1 ? 1 : 0);
+        if (target < 0) target = 0;   // can't go below 0
+    } else {
+        target = (int32_t)p->timer_reload + change;
     }
 
-    return p->timer_reload + change;
+    return (uint16_t)target;
 }
 
 /**
@@ -841,7 +883,7 @@ void clock_pulse_length(Pulse *p) {
  */
 void triangle_tick(Triangle *t) {
     if (t->timer_counter == 0) {
-        t->timer_counter = t->timer_reload + 1;
+        t->timer_counter = t->timer_reload;
 
         if (t->length_counter > 0 && t->linear_counter > 0) {
             t->seq_pos = (t->seq_pos + 1) & 31;
