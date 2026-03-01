@@ -8,6 +8,16 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIRS})
 
+# SDL2_TTF
+if(WIN32)
+    set(SDL2_TTF_INCLUDE_DIR $ENV{SDL2_TTF}/include/SDL2)
+    set(SDL2_TTF_LIBRARY $ENV{SDL2_TTF}/lib/libSDL2_ttf.dll.a)
+    include_directories(${SDL2_TTF_INCLUDE_DIR})
+else()
+    find_package(SDL2_ttf REQUIRED)
+    include_directories(${SDL2_TTF_INCLUDE_DIRS})
+endif()
+
 # Sources
 set(SRC
     main.c
