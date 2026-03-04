@@ -1,0 +1,23 @@
+# Ignore ROM files
+*.nes
+*.NES
+
+# Ignore compiled binaries
+beaverNES
+*.exe
+*.out
+
+# Object files
+*.o
+*.obj
+
+# Build folders
+build/
+dist/
+
+# VSCode
+.vscode/
+
+# Mac / Linux junk
+.DS_Store
+Thumbs.db

@@ -152,6 +152,8 @@ void init_apu(APU *apu, Region region);
 float apu_tick(APU *apu);
 void apu_reset(APU *apu);
 
+//notes from elvis-dev declare apu create
+APU *apu_create(void);
 void apu_write(APU *apu, uint16_t addr, uint8_t value);
 uint8_t apu_read(APU *apu, uint16_t addr);
 

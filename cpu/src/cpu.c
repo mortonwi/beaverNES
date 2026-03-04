@@ -69,3 +69,31 @@ void cpu_step(CPU *cpu) {
     cpu->cycles += op->cycles;
 }
 
+//notes from elvis-dev: Implement stack operations for JSR/RTS and interrupts
+static void cpu_push(CPU *cpu, uint8_t value) {
+    cpu_write8(cpu, 0x0100 | cpu->SP, value);
+    cpu->SP--;
+}
+//notes from elvis-dev: this can be used later for RTI (return from interrupt) and RTS (return from subroutine)
+// static uint8_t cpu_pop(CPU *cpu) {
+//     cpu->SP++;
+//     return cpu_read8(cpu, 0x0100 | cpu->SP);
+// }
+
+//notes from elvis-dev: Implement NMI handler
+void cpu_nmi(CPU *cpu) {
+    cpu_push(cpu, (cpu->PC >> 8) & 0xFF);
+    cpu_push(cpu, cpu->PC & 0xFF);
+
+    set_flag(cpu, FLAG_B, false);
+    set_flag(cpu, FLAG_U, true);
+    set_flag(cpu, FLAG_I, true);
+
+    cpu_push(cpu, cpu->P);
+
+    uint16_t lo = cpu_read8(cpu, 0xFFFA);
+    uint16_t hi = cpu_read8(cpu, 0xFFFB);
+    cpu->PC = (hi << 8) | lo;
+
+    cpu->cycles += 7;
+}

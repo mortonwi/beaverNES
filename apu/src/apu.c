@@ -1,6 +1,6 @@
 #include "../include/apu.h"
 #include "stdio.h"
-
+#include "stdlib.h"
 /*
  * TODO:
  *   [X]  Implement Required Static Tables
@@ -1002,4 +1002,19 @@ void clock_noise_envelope(Noise *n) {
 void clock_noise_length(Noise *n) {
     if (!n->length_halt && n->length_counter > 0)
         n->length_counter--;
+}
+
+/*
+    notes from elvis-dev
+ * Creates and initializes a new APU instance.
+ * Allocates memory and sets default region to NTSC.
+ */
+
+APU *apu_create(void)
+{
+    APU *apu = malloc(sizeof(APU));
+    if (!apu) return NULL;
+
+    init_apu(apu, NTSC);  // default to NTSC
+    return apu;
 }

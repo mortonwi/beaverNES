@@ -4,13 +4,17 @@
 #include <stdint.h>
 #include "memory.h"
 
-#include "../beaverNES-anjelica-dev/rom_loader.h"
-#include "../../apu/apu.h"
-
+//notes from elvis-dev
+//changed paths to match new file structure
+#include "rom_loader.h"
+#include "apu.h"
+#include "ppu.h"
 // Bus acts as the communication channel that connects CPU to memory and later other comoponents (PPU, APU)
 
 
 typedef struct CPU CPU;
+typedef struct Cartridge Cartridge;
+
 
 typedef struct Bus {
     Memory *mem; // pointer to memory (RAM)

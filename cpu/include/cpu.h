@@ -49,6 +49,7 @@ CPU *cpu_create(void *bus); // creates cpu, connects to bus
 void cpu_reset(CPU *cpu); // sets registers, clears data, loads inital PC (program counter)
 void cpu_step(CPU *cpu); // executes a single CPU cycle
 void cpu_connect_bus(CPU *cpu, void *bus); // connects cpu to bus
+void cpu_nmi(CPU *cpu); //notes from elvis-dev: non-maskable interrupt, triggered by PPU at start of vertical blanking
 
 void cpu_write8(CPU *cpu, uint16_t addr, uint8_t val);
 uint8_t cpu_read8(CPU *cpu, uint16_t addr);
@@ -57,6 +58,13 @@ uint8_t cpu_read8(CPU *cpu, uint16_t addr);
 void set_flag(CPU *cpu, uint8_t flag, bool value);
 bool get_flag(CPU *cpu, uint8_t flag);
 
-bool page_crossed;
-
+/*notes from elvis-dev
+Commented out global page_crossed definition.
+This caused multiple definition linker errors because cpu.h
+is included in multiple .c files. Page crossing state is
+already tracked inside the CPU struct (cpu->page_crossed),
+so a global variable is unnecessary.
+*/
+//bool page_crossed;
+//-----------------------------------------------------------------------------
 #endif // CPU_H
