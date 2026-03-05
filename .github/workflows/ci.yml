@@ -1,22 +1,27 @@
-name: beaverNes CI
+name: beaverNES CI
 
 on:
   push:
+    branches: [ '*' ]
   pull_request:
+    branches: [ '*' ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install GCC
-        run: sudo apt-get update && sudo apt-get install -y build-essential
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libsdl2-dev libsdl2-ttf-dev
 
-      - name: Build Hello World
-        run: make
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
-      - name: Run Hello World
-        run: ./hello
+      # just builds for now, no real tests
+      - name: Build Project
+        run: cmake --build build --config Release
