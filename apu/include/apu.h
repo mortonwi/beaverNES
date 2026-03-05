@@ -4,9 +4,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define SAMPLING_FREQUENCY 48000
-#define BUFFER_SIZE 1024
-
 /**
  * @brief Region NTSC vs PAL
  */
@@ -148,12 +145,12 @@ typedef struct {
     uint16_t frame_counter_cycles;  // Cycles within current frame
 } APU;
 
+APU* apu_create();
+void apu_free(APU *apu);
 void init_apu(APU *apu, Region region);
-float apu_tick(APU *apu);
+void apu_tick(APU *apu);
+float apu_get_output(APU *apu);
 void apu_reset(APU *apu);
-
-//notes from elvis-dev declare apu create
-APU *apu_create(void);
 void apu_write(APU *apu, uint16_t addr, uint8_t value);
 uint8_t apu_read(APU *apu, uint16_t addr);
 

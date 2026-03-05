@@ -1,4 +1,4 @@
-#include "../include/apu.h"
+#include "apu.h"
 #include "stdio.h"
 #include "stdlib.h"
 /*
@@ -8,7 +8,7 @@
  *   [X]  Implement Triangle Wave Generators
  *   [X]  Implement Noise Wave Generator
  *   [X]  Set up APU and channel init
- *   [ ]  Correctly output audio to SDL2 Interface
+ *   [X]  Correctly output audio to SDL2 Interface
  *   [ ]  Implement DMC Channel
  */
 
@@ -164,27 +164,19 @@ void init_apu(APU *apu, Region region) {
 }
 
 /**
- * @brief AI assisted main APU func.
- * 
- * Executes for every APU tick. Handles each audio channel.
+ * @brief Advance the internal state of the APU by one 'tick'
  */
-float apu_tick(APU *apu) {
-    // Pulse timers clock at the APU rate, which is every 2 CPU cycles.
-    // Only advance them on even cycles to match NES hardware behaviour.
+void apu_tick(APU *apu) {
+    // Pulse timers clock at the APU rate (every 2 CPU cycles)
     if (apu->cycles % 2 == 0) {
         pulse_tick(&apu->pulse1);
         pulse_tick(&apu->pulse2);
     }
 
-    // advance triangle timer
     triangle_tick(&apu->triangle);
-    
-    // advance noise timer
     noise_tick(&apu->noise, apu->region);
+    // TODO: dmc_tick(&apu->delta);
 
-    // TODO: dmc_tick(&apu->dmc);
-
-    // check frame sequencer
     if (quarter_frame_tick(apu)) {
         clock_pulse_envelope(&apu->pulse1);
         clock_pulse_envelope(&apu->pulse2);
@@ -199,39 +191,33 @@ float apu_tick(APU *apu) {
         clock_triangle_length(&apu->triangle);
         clock_noise_length(&apu->noise);
     }
-    // advance frame clock
-    clock_frame_counter(apu);
 
-    // generate output samples
+    clock_frame_counter(apu);
+    apu->cycles++;
+}
+
+/**
+ * @brief Returns generated audio for the current cycle.
+ */
+float apu_get_output(APU *apu) {
     uint8_t pulse_sample1 = pulse_output(&apu->pulse1);
     uint8_t pulse_sample2 = pulse_output(&apu->pulse2);
-    uint8_t tri_sample = triangle_output(&apu->triangle);
-    uint8_t noise_sample = noise_output(&apu->noise);
+    uint8_t tri_sample    = triangle_output(&apu->triangle);
+    uint8_t noise_sample  = noise_output(&apu->noise);
+    uint8_t dmc_sample    = 0; // TODO: get from DMC channel
 
-    // pulse wave mixing
     float pulse_out = 0.0f;
-    if (pulse_sample1 + pulse_sample2 > 0) {
+    if (pulse_sample1 + pulse_sample2 > 0)
         pulse_out = 95.88f / ((8128.0f / (pulse_sample1 + pulse_sample2)) + 100.0f);
-    }
 
-    // tri + noise + dmc mixing
     float tnd_out = 0.0f;
-    uint8_t dmc_sample = 0;  // TODO: get from DMC channel :(
-    
     float tnd_sum = tri_sample / 8227.0f + noise_sample / 12241.0f + dmc_sample / 22638.0f;
-    if (tnd_sum > 0) {
+    if (tnd_sum > 0)
         tnd_out = 159.79f / ((1.0f / tnd_sum) + 100.0f);
-    }
 
-    // mix
     float output = pulse_out + tnd_out;
-    
-    // apply a clamp to the output
-    if (output > 1.0f) output = 1.0f;
-    if (output < 0.0f) output = 0.0f;
-
-    // advance APU cycle
-    apu->cycles++;
+    if (output > 1.0f)  output = 1.0f;
+    if (output < 0.0f)  output = 0.0f;  // NES output is [0,1] before SDL conversion
 
     return output;
 }
@@ -245,10 +231,10 @@ float apu_tick(APU *apu) {
  * to know the region again.
  */
 void apu_reset(APU *apu) {
-    /* preserve caller's region */
+    // preserve caller's region and sample_rate
     Region region = apu->region;
 
-    /* Reset register mirror */
+    // reset register mirror
     for (int i = 0; i < 4; i++) {
         apu->registers.pulse1[i] = 0;
         apu->registers.pulse2[i] = 0;
@@ -259,21 +245,20 @@ void apu_reset(APU *apu) {
     apu->registers.status = 0;
     apu->registers.frame_counter = 0;
 
-    /* Reset all channels to power-on defaults */
+    // reset all channels to power-on defaults
     apu->pulse1   = init_pulse(1);
     apu->pulse2   = init_pulse(2);
     apu->triangle = init_triangle();
     apu->noise    = init_noise();
     apu->delta    = init_dmc();
 
-    /* Reset frame sequencer */
+    // reset frame sequencer
     apu->cycles              = 0;
     apu->frame_mode          = 0;
     apu->frame_irq_inhibit   = 1;
     apu->frame_interrupt     = 0;
     apu->frame_counter_cycles = 0;
-
-    apu->region = region;
+    apu->region      = region;
 
     if (DEBUG) 
         printf("APU Reset\n");
@@ -1004,17 +989,21 @@ void clock_noise_length(Noise *n) {
         n->length_counter--;
 }
 
-/*
-    notes from elvis-dev
- * Creates and initializes a new APU instance.
- * Allocates memory and sets default region to NTSC.
+/**
+ * Notes from elvis-dev: 
+ * @brief Creates and initializes a new APU instance.
+ * Allocates memory and sets default region to NTSC using init_apu().
  */
-
-APU *apu_create(void)
-{
+APU *apu_create() {
     APU *apu = malloc(sizeof(APU));
     if (!apu) return NULL;
-
-    init_apu(apu, NTSC);  // default to NTSC
+    init_apu(apu, NTSC);    // default to NTSC
     return apu;
+}
+/** 
+ * @brief Free the memory allocated to the APU
+ */
+void apu_free(APU *apu) {
+    if (!apu) return;
+    free(apu);
 }

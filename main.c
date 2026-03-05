@@ -1,4 +1,4 @@
-#include <SDL2/SDL.h>
+#include <SDL.h>
 #include <stdio.h>
 #include <stdbool.h>
 
@@ -8,7 +8,11 @@
 #include "rom_loader.h"
 #include "ppu.h"
 #include "opcodes.h"
-#define SCALE 3
+#include "apu.h"
+
+#define SCALE 2
+#define AUDIO_BUFFER_SAMPLES 2048
+#define SAMPLE_RATE 48000
 
 int main(int argc, char **argv)
 {
@@ -17,12 +21,13 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // --- SDL INIT ---
+    // --- SDL INIT VIDEO ---
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        printf("SDL_Init Error: %s\n", SDL_GetError());
+        printf("SDL_INIT_VIDEO Error: %s\n", SDL_GetError());
         return 1;
     }
 
+    // --- Create window and renderer --- 
     SDL_Window *window = SDL_CreateWindow(
         "beaverNES",
         SDL_WINDOWPOS_CENTERED,
@@ -40,6 +45,28 @@ int main(int argc, char **argv)
         PPU_WIDTH,
         PPU_HEIGHT
     );
+
+    // --- SDL INIT AUDIO ---
+    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+        printf("SDL_INIT_AUDIO Error: %s", SDL_GetError());
+        return 1;
+    }
+
+    SDL_AudioSpec spec;
+    SDL_zero(spec);
+    spec.freq     = SAMPLE_RATE;
+    spec.format   = AUDIO_F32SYS;
+    spec.channels = 1;
+    spec.samples  = AUDIO_BUFFER_SAMPLES;
+    spec.callback = NULL;
+
+    // Create audio device
+    SDL_AudioDeviceID device = SDL_OpenAudioDevice(NULL, 0, &spec, NULL, 0);
+    if (!device) {
+        printf("Failed to open audio device: %s\n", SDL_GetError());
+        return 1;
+    }
+    SDL_PauseAudioDevice(device, 0);
 
     // --- Emulator Init ---
     Memory *memory = memory_create();
@@ -65,6 +92,10 @@ int main(int argc, char **argv)
     init_opcode_table();
     cpu_reset(cpu);
 
+    float audio_buffer[AUDIO_BUFFER_SAMPLES];
+    const double CPU_PER_SAMPLE = 1789773.0 / (double)SAMPLE_RATE; // NTCS cycles per sample
+    double cpu_cycle_accum = 0.0;
+
     bool running = true;
     SDL_Event event;
 
@@ -75,16 +106,35 @@ int main(int argc, char **argv)
                 running = false;
         }
 
-        // Run CPU cycles
-        for (int i = 0; i < 1000; i++) {
-            cpu_step(cpu);
-            ppu_clock();
-            ppu_clock();
-            ppu_clock();
-            if (ppu_poll_nmi()) {
-                cpu_nmi(cpu);
+        // --- Generate one audio buffer worth of samples ---
+        for (int i = 0; i < AUDIO_BUFFER_SAMPLES; i++) {
+            cpu_cycle_accum += CPU_PER_SAMPLE;
+
+            while (cpu_cycle_accum >= 1.0) {
+                cpu_step(cpu);
+
+                // PPU clocks 3 times per CPU tick
+                ppu_clock();
+                ppu_clock();
+                ppu_clock();
+
+                if (ppu_poll_nmi())
+                    cpu_nmi(cpu);
+
+                // Tick just the APU state
+                apu_tick(apu);
+                cpu_cycle_accum -= 1.0;
             }
+            
+            float sample = apu_get_output(apu);
+            audio_buffer[i] = (sample * 2.0f) - 1.0f;
         }
+
+        // Play audio
+        while (SDL_GetQueuedAudioSize(device) > AUDIO_BUFFER_SAMPLES * sizeof(float) * 2) {
+            SDL_Delay(1);
+        }
+        SDL_QueueAudio(device, audio_buffer, sizeof(audio_buffer));
 
         // Update texture from PPU framebuffer
         SDL_UpdateTexture(
@@ -99,11 +149,13 @@ int main(int argc, char **argv)
         SDL_RenderPresent(renderer);
     }
 
+    SDL_CloseAudioDevice(device);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
 
     rom_free(&cart);
+    apu_free(apu);
     return 0;
 }
