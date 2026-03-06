@@ -13,22 +13,6 @@ typedef enum {
 } Region;
 
 /**
- * @brief Registers used to change APU state.
- * 
- *  Mapping comes from NESDEV documenation
- */
-typedef struct {
-    uint8_t pulse1[4];          // $4000–$4003
-    uint8_t pulse2[4];          // $4004–$4007
-    uint8_t triangle[4];        // $4008–$400B
-    uint8_t noise[4];           // $400C–$400F
-    uint8_t dmc[4];             // $4010–$4013
-
-    uint8_t status;             // $4015 Special
-    uint8_t frame_counter;      // $4017 Special
-} Registers;
-
-/**
  * @brief Pulse Wave Channel
  * 
  * Square wave audio generator.
@@ -126,11 +110,10 @@ typedef struct {
 /**
  * @brief Audio Processing Unit
  * 
- * Main structure for the audio processing unit. Includes all audio channels and registers.
+ * Main structure for the audio processing unit. Includes all audio channels and timing components.
  */
 typedef struct {
     Region region;
-    Registers registers;
 
     Pulse pulse1;
     Pulse pulse2;
@@ -143,6 +126,9 @@ typedef struct {
     uint8_t frame_irq_inhibit;      // IRQ inhibit flag
     uint8_t frame_interrupt;        // Frame interrupt flag
     uint16_t frame_counter_cycles;  // Cycles within current frame
+
+    float pulse_mix_table[31];      // efficient lookup table for pulse output mixing
+    float tnd_mix_table[203];    // efficient lookup table for tnd output mixing
 } APU;
 
 APU* apu_create();
