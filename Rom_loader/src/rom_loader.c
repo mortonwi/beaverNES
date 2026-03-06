@@ -119,6 +119,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         return false;
     }
 
+    //Read PRG-ROM data
     if (fread(out_cart->prg, 1, out_cart->prg_size, f) != out_cart->prg_size) {
         fclose(f);
         set_err(err_msg, err_msg_len, "Failed to read PRG-ROM");
@@ -149,6 +150,7 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
             return false;
         }
 
+        //Read CHR-ROM data
         if (fread(out_cart->chr, 1, out_cart->chr_size, f) != out_cart->chr_size) {
             fclose(f);
             set_err(err_msg, err_msg_len, "Failed to read CHR-ROM");
