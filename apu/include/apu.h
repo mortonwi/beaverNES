@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define SAMPLING_FREQUENCY 48000
+#define BUFFER_SIZE 1024
+
 /**
  * @brief Region NTSC vs PAL
  */

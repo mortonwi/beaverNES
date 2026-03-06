@@ -177,6 +177,15 @@ void apu_tick(APU *apu) {
     noise_tick(&apu->noise, apu->region);
     // TODO: dmc_tick(&apu->delta);
 
+    // advance triangle timer
+    triangle_tick(&apu->triangle);
+    
+    // advance noise timer
+    noise_tick(&apu->noise, apu->region);
+
+    // TODO: dmc_tick(&apu->dmc);
+
+    // check frame sequencer
     if (quarter_frame_tick(apu)) {
         clock_pulse_envelope(&apu->pulse1);
         clock_pulse_envelope(&apu->pulse2);
@@ -259,7 +268,6 @@ void apu_reset(APU *apu) {
     apu->frame_interrupt     = 0;
     apu->frame_counter_cycles = 0;
     apu->region      = region;
-
     if (DEBUG) 
         printf("APU Reset\n");
 }
