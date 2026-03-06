@@ -9,7 +9,6 @@ https://www.nesdev.org/wiki/NES_reference_guide
 
 # beaverNES – ROM Loading & Input Foundations
 
-This branch focuses on building and validating the **ROM loading pipeline** for beaverNES, along with early groundwork for controller input. The goal is to ensure NES game cartridges are loaded, parsed, and mapped correctly before deeper CPU/PPU integration.
 
 ---
 
@@ -75,7 +74,7 @@ ROM loading and mapping have been tested using real UxROM titles to validate ban
 
 ---
 
-## Input Handling (Implemented)
+## Input Handling
 
 NES controllers use a serial shift register, where button states are read one bit at a time through memory-mapped registers.
 
