@@ -36,7 +36,7 @@
 /* ── Constants ────────────────────────────────────────────────────── */
 
 #define CPU_FREQ  1789773   /* NTSC CPU clock (Hz)                     */
-#define MAX_TESTS 32
+#define MAX_TESTS 48
 
 /* ── Internal result type ─────────────────────────────────────────── */
 
@@ -51,12 +51,16 @@ typedef struct {
 
 /**
  * @brief Tick the APU cpu_cycles times and return the maximum sample.
+ *
+ * NOTE: apu_tick() returns void — output must be read via apu_get_output()
+ * on a separate call.
  */
 static float max_sample(APU *apu, int cpu_cycles)
 {
     float mx = 0.0f;
     for (int i = 0; i < cpu_cycles; i++) {
-        float s = apu_tick(apu);
+        apu_tick(apu);
+        float s = apu_get_output(apu);
         if (s > mx) mx = s;
     }
     return mx;
@@ -68,8 +72,10 @@ static float max_sample(APU *apu, int cpu_cycles)
 static float mean_sample(APU *apu, int cpu_cycles)
 {
     double sum = 0.0;
-    for (int i = 0; i < cpu_cycles; i++)
-        sum += apu_tick(apu);
+    for (int i = 0; i < cpu_cycles; i++) {
+        apu_tick(apu);
+        sum += apu_get_output(apu);
+    }
     return (float)(sum / cpu_cycles);
 }
 
@@ -82,11 +88,13 @@ static float mean_sample(APU *apu, int cpu_cycles)
 static float measure_frequency(APU *apu, int cpu_cycles)
 {
     const float THRESHOLD = 0.04f;
-    float prev = apu_tick(apu);
+    apu_tick(apu);
+    float prev = apu_get_output(apu);
     int   crossings = 0;
 
     for (int i = 1; i < cpu_cycles; i++) {
-        float curr = apu_tick(apu);
+        apu_tick(apu);
+        float curr = apu_get_output(apu);
         if (prev < THRESHOLD && curr >= THRESHOLD)
             crossings++;
         prev = curr;
@@ -105,7 +113,8 @@ static float nonzero_ratio(APU *apu, int cpu_cycles)
 {
     int nz = 0;
     for (int i = 0; i < cpu_cycles; i++) {
-        if (apu_tick(apu) > 0.001f)
+        apu_tick(apu);
+        if (apu_get_output(apu) > 0.001f)
             nz++;
     }
     return (float)nz / cpu_cycles;
@@ -833,16 +842,21 @@ static TestResult test_pulse_harmony(APU *apu)
 }
 
 /**
- * @brief All four implemented channels playing together produce output.
+ * @brief All five channels playing together produce output.
  *
  *   Pulse 1 440 Hz + Pulse 2 554 Hz + Triangle 220 Hz + Noise percussion
+ *   + DMC at output_level = 63 via direct DAC write ($4011)
+ *
+ * DMC is loaded via $4011 (direct DAC) so no ROM/bus DMA is required.
+ * The combined tnd_index will be higher than without DMC, producing
+ * strictly greater output from the tnd_mix_table lookup.
  */
 static TestResult test_all_channels_combined(APU *apu)
 {
-    TestResult r = make_result("All Channels Combined");
+    TestResult r = make_result("All Five Channels Combined (incl. DMC DAC)");
     init_apu(apu, NTSC);
 
-    apu_write(apu, 0x4015, 0x0F);
+    apu_write(apu, 0x4015, 0x1F);   /* enable all five channels */
 
     apu_write(apu, 0x4000, 0xBF);
     apu_write(apu, 0x4002, 0xFE);
@@ -860,10 +874,457 @@ static TestResult test_all_channels_combined(APU *apu)
     apu_write(apu, 0x400E, 0x03);
     apu_write(apu, 0x400F, 0xF8);
 
+    apu_write(apu, 0x4011, 0x3F);   /* DMC direct DAC: output_level = 63 */
+
     float mx   = max_sample(apu, 20000);
     r.measured = mx;
     r.expected = 0.0f;  /* expected > 0 */
     r.passed   = (mx > 0.001f);
+    return r;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   DMC CHANNEL TESTS
+   ══════════════════════════════════════════════════════════════════
+   These tests exercise the DMC output unit, register interface, and
+   DMA signalling without requiring a CPU, bus, or ROM.  Bytes that
+   the bus would normally DMA from cartridge memory are injected
+   directly via dmc_load_sample_byte().  Struct fields are read or
+   written directly where a clean register path does not exist.
+   ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * @brief Power-on state of every DMC field is correct.
+ *
+ * Per NESDev: silence_flag starts set (channel is silent until a
+ * sample byte is loaded), bits_remaining = 8, sample_buffer_empty = 1,
+ * output_level = 0, dma_pending = 0.
+ */
+static TestResult test_dmc_init_state(APU *apu)
+{
+    TestResult r = make_result("DMC Power-On State");
+    init_apu(apu, NTSC);
+
+    int ok = (apu->delta.silence_flag     == 1) &&
+             (apu->delta.bits_remaining   == 8) &&
+             (apu->delta.sample_buffer_empty == 1) &&
+             (apu->delta.output_level     == 0) &&
+             (apu->delta.dma_pending      == 0) &&
+             (apu->delta.bytes_remaining  == 0) &&
+             (apu->delta.irq_flag         == 0);
+
+    r.measured = (float)ok;
+    r.expected = 1.0f;
+    r.passed   = ok;
+    return r;
+}
+
+/**
+ * @brief Direct DAC write ($4011) sets output_level immediately.
+ *
+ * $4011 bit 6-0 = output level (0–127).  The write is independent of
+ * the sample player; it takes effect on the very next call to
+ * apu_get_output().  The top bit of $4011 is ignored.
+ *
+ *   $4011 = 0x55  →  output_level = 0x55 = 85
+ */
+static TestResult test_dmc_direct_dac(APU *apu)
+{
+    TestResult r = make_result("DMC Direct DAC Write ($4011)");
+    init_apu(apu, NTSC);
+
+    apu_write(apu, 0x4011, 0x55);
+
+    r.measured = (float)apu->delta.output_level;
+    r.expected = 85.0f;
+    r.passed   = (apu->delta.output_level == 85);
+    return r;
+}
+
+/**
+ * @brief Direct DAC write masks the top bit (only bits 6–0 are used).
+ *
+ *   $4011 = 0xFF  →  output_level = 0x7F = 127  (bit 7 discarded)
+ */
+static TestResult test_dmc_direct_dac_mask(APU *apu)
+{
+    TestResult r = make_result("DMC Direct DAC Masks Bit 7");
+    init_apu(apu, NTSC);
+
+    apu_write(apu, 0x4011, 0xFF);
+
+    r.measured = (float)apu->delta.output_level;
+    r.expected = 127.0f;
+    r.passed   = (apu->delta.output_level == 127);
+    return r;
+}
+
+/**
+ * @brief Output unit steps UP by 2 for each 1-bit in the shift register.
+ *
+ * We bypass the DMA path by writing directly into the shift register and
+ * clearing silence_flag.  With timer_period = 0 every apu_tick() fires
+ * the output unit once (the timer reloads to 0 immediately).
+ *
+ * Shift register = 0xFF (all ones): eight consecutive 1-bits.
+ * Start level = 0 → after 8 output clocks → expected level = 16.
+ */
+static TestResult test_dmc_output_steps_up(APU *apu)
+{
+    TestResult r = make_result("DMC Output Steps Up (+2 per 1-bit)");
+    init_apu(apu, NTSC);
+
+    /* Arm output unit directly — no DMA fetch needed */
+    apu->delta.shift_register    = 0xFF;
+    apu->delta.silence_flag      = 0;
+    apu->delta.bits_remaining    = 8;
+    apu->delta.output_level      = 0;
+    apu->delta.timer_period      = 0;
+    apu->delta.timer_counter     = 0;
+    apu->delta.sample_buffer_empty = 1;  /* no loop — silence after this byte */
+
+    for (int i = 0; i < 8; i++) apu_tick(apu);
+
+    r.measured = (float)apu->delta.output_level;
+    r.expected = 16.0f;
+    r.passed   = (apu->delta.output_level == 16);
+    return r;
+}
+
+/**
+ * @brief Output unit steps DOWN by 2 for each 0-bit in the shift register.
+ *
+ * Shift register = 0x00 (all zeros), start level = 32.
+ * After 8 output clocks → expected level = 16.
+ */
+static TestResult test_dmc_output_steps_down(APU *apu)
+{
+    TestResult r = make_result("DMC Output Steps Down (-2 per 0-bit)");
+    init_apu(apu, NTSC);
+
+    apu->delta.shift_register    = 0x00;
+    apu->delta.silence_flag      = 0;
+    apu->delta.bits_remaining    = 8;
+    apu->delta.output_level      = 32;
+    apu->delta.timer_period      = 0;
+    apu->delta.timer_counter     = 0;
+    apu->delta.sample_buffer_empty = 1;
+
+    for (int i = 0; i < 8; i++) apu_tick(apu);
+
+    r.measured = (float)apu->delta.output_level;
+    r.expected = 16.0f;
+    r.passed   = (apu->delta.output_level == 16);
+    return r;
+}
+
+/**
+ * @brief Output level is clamped at 127 — never exceeds that value.
+ *
+ * The spec: "+2 only if level <= 125".  Starting at 127 means the
+ * condition is never true; the level must remain at 127 after any
+ * number of 1-bit clocks.
+ */
+static TestResult test_dmc_clamp_upper(APU *apu)
+{
+    TestResult r = make_result("DMC Output Level Clamp at 127");
+    init_apu(apu, NTSC);
+
+    apu->delta.shift_register    = 0xFF;
+    apu->delta.silence_flag      = 0;
+    apu->delta.bits_remaining    = 8;
+    apu->delta.output_level      = 127;
+    apu->delta.timer_period      = 0;
+    apu->delta.timer_counter     = 0;
+    apu->delta.sample_buffer_empty = 1;
+
+    for (int i = 0; i < 8; i++) apu_tick(apu);
+
+    r.measured = (float)apu->delta.output_level;
+    r.expected = 127.0f;
+    r.passed   = (apu->delta.output_level == 127);
+    return r;
+}
+
+/**
+ * @brief Output level is clamped at 0 — never goes negative.
+ *
+ * The spec: "-2 only if level >= 2".  Starting at 0 means the
+ * condition is never true; the level must remain at 0 after any
+ * number of 0-bit clocks.
+ */
+static TestResult test_dmc_clamp_lower(APU *apu)
+{
+    TestResult r = make_result("DMC Output Level Clamp at 0");
+    init_apu(apu, NTSC);
+
+    apu->delta.shift_register    = 0x00;
+    apu->delta.silence_flag      = 0;
+    apu->delta.bits_remaining    = 8;
+    apu->delta.output_level      = 0;
+    apu->delta.timer_period      = 0;
+    apu->delta.timer_counter     = 0;
+    apu->delta.sample_buffer_empty = 1;
+
+    for (int i = 0; i < 8; i++) apu_tick(apu);
+
+    r.measured = (float)apu->delta.output_level;
+    r.expected = 0.0f;
+    r.passed   = (apu->delta.output_level == 0);
+    return r;
+}
+
+/**
+ * @brief Silence flag blocks all output-level changes.
+ *
+ * When silence_flag = 1 the output unit must not adjust output_level
+ * regardless of the shift register contents.  Level must not change
+ * even though the output unit is still clocking.
+ */
+static TestResult test_dmc_silence_blocks_output(APU *apu)
+{
+    TestResult r = make_result("DMC Silence Flag Blocks Output Changes");
+    init_apu(apu, NTSC);
+
+    apu->delta.shift_register    = 0xFF;
+    apu->delta.silence_flag      = 1;   /* forced silent */
+    apu->delta.bits_remaining    = 8;
+    apu->delta.output_level      = 64;
+    apu->delta.timer_period      = 0;
+    apu->delta.timer_counter     = 0;
+    apu->delta.sample_buffer_empty = 1;
+
+    for (int i = 0; i < 8; i++) apu_tick(apu);
+
+    r.measured = (float)apu->delta.output_level;
+    r.expected = 64.0f;
+    r.passed   = (apu->delta.output_level == 64);
+    return r;
+}
+
+/**
+ * @brief dma_pending is raised when the sample buffer is empty and
+ *        bytes_remaining > 0.
+ *
+ * Register sequence:
+ *   $4012 = 0x00  →  sample_address = $C000
+ *   $4013 = 0x00  →  sample_length  = 1
+ *   $4015 = 0x10  →  enable DMC → dmc_restart → bytes_remaining = 1
+ *
+ * One apu_tick() triggers dmc_tick(), which must set dma_pending = 1.
+ */
+static TestResult test_dmc_dma_pending_raised(APU *apu)
+{
+    TestResult r = make_result("DMC dma_pending Raised When Buffer Empty");
+    init_apu(apu, NTSC);
+
+    apu_write(apu, 0x4012, 0x00);   /* sample_address = $C000 */
+    apu_write(apu, 0x4013, 0x00);   /* sample_length  = 1     */
+    apu_write(apu, 0x4015, 0x10);   /* enable DMC             */
+
+    apu_tick(apu);
+
+    r.measured = (float)apu->delta.dma_pending;
+    r.expected = 1.0f;
+    r.passed   = (apu->delta.dma_pending == 1);
+    return r;
+}
+
+/**
+ * @brief dmc_load_sample_byte clears dma_pending and fills the buffer.
+ *
+ * After the bus completes a DMA fetch it calls dmc_load_sample_byte.
+ * We verify: dma_pending → 0, sample_buffer = byte, sample_buffer_empty = 0.
+ */
+static TestResult test_dmc_load_byte_clears_pending(APU *apu)
+{
+    TestResult r = make_result("DMC load_sample_byte Clears dma_pending");
+    init_apu(apu, NTSC);
+
+    /* Simulate the state the bus would see after dma_pending is raised */
+    apu->delta.bytes_remaining = 1;
+    apu->delta.dma_pending     = 1;
+
+    dmc_load_sample_byte(apu, 0xA5);
+
+    int ok = (apu->delta.dma_pending        == 0) &&
+             (apu->delta.sample_buffer      == 0xA5) &&
+             (apu->delta.sample_buffer_empty == 0);
+
+    r.measured = (float)ok;
+    r.expected = 1.0f;
+    r.passed   = ok;
+    return r;
+}
+
+/**
+ * @brief IRQ flag is set when the sample ends and irq_enable = 1.
+ *
+ *   $4010 = 0x80  irq_enable=1, loop=0, rate=0
+ *
+ * We inject one byte with bytes_remaining = 1.  After the call
+ * bytes_remaining reaches 0 and irq_flag must be raised.
+ */
+static TestResult test_dmc_irq_on_sample_end(APU *apu)
+{
+    TestResult r = make_result("DMC IRQ Flag Set on Sample End");
+    init_apu(apu, NTSC);
+
+    apu_write(apu, 0x4010, 0x80);   /* irq_enable=1, loop=0 */
+
+    apu->delta.bytes_remaining  = 1;
+    apu->delta.sample_address   = 0xC000;
+    apu->delta.sample_length    = 1;
+
+    dmc_load_sample_byte(apu, 0x00);
+
+    r.measured = (float)apu->delta.irq_flag;
+    r.expected = 1.0f;
+    r.passed   = (apu->delta.irq_flag == 1);
+    return r;
+}
+
+/**
+ * @brief IRQ flag is NOT set when irq_enable = 0.
+ *
+ * Same scenario as above but irq_enable = 0 (default).
+ * irq_flag must remain 0 after the sample ends.
+ */
+static TestResult test_dmc_no_irq_when_disabled(APU *apu)
+{
+    TestResult r = make_result("DMC No IRQ When irq_enable = 0");
+    init_apu(apu, NTSC);
+
+    /* irq_enable is 0 by default after init_apu */
+    apu->delta.bytes_remaining  = 1;
+    apu->delta.sample_address   = 0xC000;
+    apu->delta.sample_length    = 1;
+
+    dmc_load_sample_byte(apu, 0x00);
+
+    r.measured = (float)apu->delta.irq_flag;
+    r.expected = 0.0f;
+    r.passed   = (apu->delta.irq_flag == 0);
+    return r;
+}
+
+/**
+ * @brief Loop mode restarts the sample when bytes_remaining reaches 0.
+ *
+ *   $4010 = 0x40  loop=1, irq_enable=0
+ *
+ * After the last byte is consumed, dmc_restart() should reload
+ * current_address = sample_address and bytes_remaining = sample_length.
+ */
+static TestResult test_dmc_loop_restarts(APU *apu)
+{
+    TestResult r = make_result("DMC Loop Mode Restarts Sample");
+    init_apu(apu, NTSC);
+
+    apu_write(apu, 0x4010, 0x40);   /* loop=1 */
+
+    apu->delta.bytes_remaining  = 1;
+    apu->delta.sample_address   = 0xC200;
+    apu->delta.sample_length    = 5;
+
+    dmc_load_sample_byte(apu, 0x00);
+
+    /* After exhausting 1 byte, loop must reload to sample_address/length */
+    int ok = (apu->delta.bytes_remaining == 5) &&
+             (apu->delta.current_address == 0xC200);
+
+    r.measured = (float)apu->delta.bytes_remaining;
+    r.expected = 5.0f;
+    r.passed   = ok;
+    return r;
+}
+
+/**
+ * @brief Disabling DMC via $4015 bit 4 = 0 clears bytes_remaining and
+ *        dma_pending immediately.
+ *
+ * A game may stop a sample mid-playback.  The bus must not attempt a
+ * further DMA fetch after disable, so both fields must be zeroed.
+ */
+static TestResult test_dmc_disable_clears_state(APU *apu)
+{
+    TestResult r = make_result("DMC Disable via $4015 Clears bytes_remaining + dma_pending");
+    init_apu(apu, NTSC);
+
+    /* Enable with a multi-byte sample so something is in-flight */
+    apu_write(apu, 0x4012, 0x00);
+    apu_write(apu, 0x4013, 0x01);   /* sample_length = 17 bytes */
+    apu_write(apu, 0x4015, 0x10);   /* enable → dmc_restart */
+    apu_tick(apu);                  /* raises dma_pending      */
+
+    /* Confirm it is armed */
+    int was_armed = (apu->delta.bytes_remaining > 0);
+
+    /* Disable */
+    apu_write(apu, 0x4015, 0x00);
+
+    int ok = was_armed &&
+             (apu->delta.bytes_remaining == 0) &&
+             (apu->delta.dma_pending     == 0);
+
+    r.measured = (float)apu->delta.bytes_remaining;
+    r.expected = 0.0f;
+    r.passed   = ok;
+    return r;
+}
+
+/**
+ * @brief DMC output_level contributes to the TND mixer.
+ *
+ * With output_level = 127 (max) vs 0 (min) the tnd_index changes by
+ * 127, which must produce a measurably different apu_get_output() value.
+ * No DMA or timing is needed — $4011 sets the level synchronously.
+ */
+static TestResult test_dmc_mixer_contribution(APU *apu)
+{
+    TestResult r = make_result("DMC Level Affects TND Mixer Output");
+
+    /* High level */
+    init_apu(apu, NTSC);
+    apu_write(apu, 0x4011, 0x7F);   /* output_level = 127 */
+    apu_tick(apu);
+    float high = apu_get_output(apu);
+
+    /* Zero level (default after init) */
+    init_apu(apu, NTSC);
+    apu_tick(apu);
+    float low = apu_get_output(apu);
+
+    r.measured = high - low;
+    r.expected = 0.0f;   /* expected > 0 */
+    r.passed   = (high > low);
+    return r;
+}
+
+/**
+ * @brief $4015 bit 4 reflects DMC active state (bytes_remaining > 0).
+ *
+ * Enable DMC with a sample, verify bit 4 of $4015 reads back as 1.
+ * Disable it, verify the bit clears.
+ */
+static TestResult test_dmc_status_bit(APU *apu)
+{
+    TestResult r = make_result("DMC $4015 Status Bit (bit 4)");
+    init_apu(apu, NTSC);
+
+    apu_write(apu, 0x4012, 0x00);
+    apu_write(apu, 0x4013, 0x01);   /* sample_length = 17 */
+    apu_write(apu, 0x4015, 0x10);   /* enable */
+
+    uint8_t status_on  = apu_read(apu, 0x4015);
+
+    apu_write(apu, 0x4015, 0x00);   /* disable */
+    uint8_t status_off = apu_read(apu, 0x4015);
+
+    r.measured = (float)((status_on >> 4) & 1);
+    r.expected = 1.0f;
+    r.passed   = ((status_on  & 0x10) != 0) &&
+                 ((status_off & 0x10) == 0);
     return r;
 }
 
@@ -926,6 +1387,8 @@ static void print_suite(TestResult *results, int n)
         printf("  Known hardware deviations (check printed values):\n");
         printf("    - Triangle timer reloads to T+1 instead of T\n");
         printf("      (produces f = CPU_FREQ/(32*(T+2)), ~3 Hz flat at 440 Hz)\n");
+        printf("    - DMC DMA fetch from cartridge ROM is NOT tested here;\n");
+        printf("      that path requires a live Bus and CPU (see bus_service_dmc_dma).\n");
     }
 
     for (int i = 0; i < LINE_LEN; i++) putchar('=');
@@ -978,6 +1441,24 @@ int run_apu_test_suite(void)
     /* -- System-level ------------------------------------------- */
     results[n++] = test_pulse_harmony(&apu);
     results[n++] = test_all_channels_combined(&apu);
+
+    /* -- DMC channel -------------------------------------------- */
+    results[n++] = test_dmc_init_state(&apu);
+    results[n++] = test_dmc_direct_dac(&apu);
+    results[n++] = test_dmc_direct_dac_mask(&apu);
+    results[n++] = test_dmc_output_steps_up(&apu);
+    results[n++] = test_dmc_output_steps_down(&apu);
+    results[n++] = test_dmc_clamp_upper(&apu);
+    results[n++] = test_dmc_clamp_lower(&apu);
+    results[n++] = test_dmc_silence_blocks_output(&apu);
+    results[n++] = test_dmc_dma_pending_raised(&apu);
+    results[n++] = test_dmc_load_byte_clears_pending(&apu);
+    results[n++] = test_dmc_irq_on_sample_end(&apu);
+    results[n++] = test_dmc_no_irq_when_disabled(&apu);
+    results[n++] = test_dmc_loop_restarts(&apu);
+    results[n++] = test_dmc_disable_clears_state(&apu);
+    results[n++] = test_dmc_mixer_contribution(&apu);
+    results[n++] = test_dmc_status_bit(&apu);
 
     print_suite(results, n);
 

@@ -19,6 +19,7 @@ Bus *bus_create(Memory *mem, APU *apu) {
     bus->cpu = NULL;
     bus->rom = NULL;
     bus->apu = apu;
+    bus->dmc_stall_cycles = 0;
     return bus;
 }
 
@@ -132,4 +133,22 @@ void bus_write(Bus *bus, uint16_t addr, uint8_t value) {
     if (bus->rom) {
         cart_cpu_write(bus->rom, addr, value);
     }
+}
+
+void bus_service_dmc_dma(Bus *bus) {
+    // Count down an in-progress stall
+    if (bus->dmc_stall_cycles > 0) {
+        bus->dmc_stall_cycles--;
+        return;
+    }
+
+    // Check if the DMC is asking for a new byte
+    if (!bus->apu->delta.dma_pending) return;
+
+    // Initiate the stall: 4 cycles total, we consume 1 here
+    bus->dmc_stall_cycles = 3;  // 3 remaining after this cycle
+
+    // Perform the DMA read and feed the byte into the APU
+    uint8_t byte = bus_read(bus, bus->apu->delta.current_address);
+    dmc_load_sample_byte(bus->apu, byte);
 }

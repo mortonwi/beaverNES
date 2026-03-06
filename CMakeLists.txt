@@ -29,6 +29,7 @@ include_directories(
 # Sources
 set(APU
     apu/src/apu.c
+    apu/src/test_apu.c
 )
 
 set(CPU

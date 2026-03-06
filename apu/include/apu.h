@@ -97,14 +97,31 @@ typedef struct {
  * Allows audio recordings to be played from ROMs on the NES.
  */
 typedef struct {
-    uint8_t irq_enable;             // IRQ enable flag
-    uint8_t loop_enabled;           // loop sample playback
-    uint8_t playback_rate;          // DMC playback frequency
+    uint8_t  enabled;
 
-    uint16_t sample_counter;        // current sample counter
+    uint8_t  irq_enable;
+    uint8_t  loop_enabled;
+    uint8_t  playback_rate;         // index into dmc_rate table
 
-    uint16_t sample_address;        // starting sample address in memory
-    uint16_t sample_length;         // sample length in bytes
+    uint8_t  output_level;          // 7-bit DAC value (0–127)
+    uint8_t  shift_register;        // 8-bit output shift register
+    uint8_t  bits_remaining;        // bits left in shift register (0–8)
+    uint8_t  silence_flag;          // output unit silent?
+
+    uint8_t  sample_buffer;         // holds fetched byte
+    uint8_t  sample_buffer_empty;   // 1 = buffer needs refill
+
+    uint16_t current_address;       // current read address ($8000–$FFFF)
+    uint16_t bytes_remaining;       // bytes left in sample
+
+    uint16_t sample_address;        // starting address = $C000 + ($4012 * 64)
+    uint16_t sample_length;         // length in bytes = ($4013 * 16) + 1
+
+    uint16_t timer_counter;
+    uint16_t timer_period;          // from dmc_rate table
+
+    uint8_t  irq_flag;
+    uint8_t  dma_pending;           // 1 = needs a DMA byte fetch from bus
 } Delta;
 
 /**
@@ -139,5 +156,6 @@ float apu_get_output(APU *apu);
 void apu_reset(APU *apu);
 void apu_write(APU *apu, uint16_t addr, uint8_t value);
 uint8_t apu_read(APU *apu, uint16_t addr);
+void dmc_load_sample_byte(APU *apu, uint8_t byte);
 
 #endif

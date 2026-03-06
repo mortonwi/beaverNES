@@ -1,6 +1,7 @@
 #include "apu.h"
 #include "stdio.h"
 #include "stdlib.h"
+
 /*
  * TODO:
  *   [X]  Implement Required Static Tables
@@ -9,7 +10,8 @@
  *   [X]  Implement Noise Wave Generator
  *   [X]  Set up APU and channel init
  *   [X]  Correctly output audio to SDL2 Interface
- *   [ ]  Implement DMC Channel
+ *   [X]  Implement DMC Channel
+ *   [ ]  Implement Proper Region Switching
  */
 
 #define DEBUG false
@@ -114,6 +116,12 @@ uint8_t noise_output(Noise *n);
 void clock_noise_envelope(Noise *n);
 void clock_noise_length(Noise *n);
 
+// dmc headers
+void dmc_restart(Delta *d);
+void dmc_tick(Delta *d);
+uint8_t dmc_output(Delta *d);
+void dmc_load_sample_byte(APU *apu, uint8_t byte);
+
 // frame counter headers
 void write_frame_counter(APU *apu, uint8_t value);
 void clock_frame_counter(APU *apu);
@@ -182,7 +190,7 @@ void apu_tick(APU *apu) {
 
     triangle_tick(&apu->triangle);
     noise_tick(&apu->noise, apu->region);
-    // TODO: dmc_tick(&apu->delta);
+    dmc_tick(&apu->delta);
 
     if (quarter_frame_tick(apu)) {
         clock_pulse_envelope(&apu->pulse1);
@@ -214,7 +222,7 @@ float apu_get_output(APU *apu) {
     uint8_t pulse_sample2 = pulse_output(&apu->pulse2);
     uint8_t tri_sample    = triangle_output(&apu->triangle);
     uint8_t noise_sample  = noise_output(&apu->noise);
-    uint8_t dmc_sample    = 0; // TODO: get from DMC channel
+    uint8_t dmc_sample    = dmc_output(&apu->delta);
 
     // use pulse lookup table
     float pulse_output = apu->pulse_mix_table[pulse_sample1 + pulse_sample2];
@@ -383,6 +391,46 @@ void apu_write(APU *apu, uint16_t addr, uint8_t value) {
                 );
             break;
 
+        case 0x4010:
+            apu->delta.irq_enable    = (value >> 7) & 1;
+            apu->delta.loop_enabled  = (value >> 6) & 1;
+            apu->delta.playback_rate = value & 0xF;
+            apu->delta.timer_period  = (apu->region == PAL)
+                                        ? dmc_rate_pal[apu->delta.playback_rate]
+                                        : dmc_rate_ntsc[apu->delta.playback_rate];
+            if (!apu->delta.irq_enable) apu->delta.irq_flag = 0;
+
+            
+            if (DEBUG)
+                printf("  [DMC $4010] irq_enable=%d, loop=%d, rate=%d, period=%d\n",
+                    apu->delta.irq_enable,
+                    apu->delta.loop_enabled,
+                    apu->delta.playback_rate,
+                    apu->delta.timer_period
+                );
+            break;
+
+        case 0x4011:
+            apu->delta.output_level = value & 0x7F;
+
+            if (DEBUG)
+                printf("  [DMC $4011] output_level=%d\n", apu->delta.output_level);
+            break;
+
+        case 0x4012:
+            apu->delta.sample_address = 0xC000 + ((uint16_t)value << 6);
+
+            if (DEBUG)
+                printf("  [DMC $4012] sample_address=0x%04X\n", apu->delta.sample_address);
+            break;
+
+        case 0x4013:
+            apu->delta.sample_length = ((uint16_t)value << 4) + 1;
+            
+            if (DEBUG)
+                printf("  [DMC $4013] sample_length=%d\n", apu->delta.sample_length);
+            break;
+
         case 0x400A:
             apu->triangle.timer_reload = (apu->triangle.timer_reload & 0x700) | value;
             
@@ -444,18 +492,27 @@ void apu_write(APU *apu, uint16_t addr, uint8_t value) {
             apu->pulse2.enabled = (value >> 1) & 0x01;
             apu->triangle.enabled = (value >> 2) & 0x01;
             apu->noise.enabled = (value >> 3) & 0x01;
+            apu->delta.enabled = (value >> 4) & 0x01;
 
             if (!apu->pulse1.enabled) apu->pulse1.length_counter = 0;
             if (!apu->pulse2.enabled) apu->pulse2.length_counter = 0;
             if (!apu->triangle.enabled) apu->triangle.length_counter = 0;
             if (!apu->noise.enabled) apu->noise.length_counter = 0;
+            if (!apu->delta.enabled) {
+                apu->delta.bytes_remaining = 0;
+                apu->delta.dma_pending = 0;
+            } else if (apu->delta.bytes_remaining == 0) {
+                dmc_restart(&apu->delta);
+            }
+            apu->delta.irq_flag = 0;
 
             if (DEBUG) 
-                printf("  [Status] pulse1_enabled=%d, pulse2_enabled=%d, triangle_enabled=%d, noise_enabled=%d\n",
+                printf("  [Status] pulse1_enabled=%d, pulse2_enabled=%d, triangle_enabled=%d, noise_enabled=%d, delta_enabled=%d\n",
                     apu->pulse1.enabled,
                     apu->pulse2.enabled,
                     apu->triangle.enabled,
-                    apu->noise.enabled
+                    apu->noise.enabled,
+                    apu->delta.enabled
                 );
             break;
 
@@ -495,23 +552,20 @@ uint8_t apu_read(APU *apu, uint16_t addr) {
         if (apu->noise.length_counter > 0)
             status |= 0x08;
         
-        // Bit 4: DMC active
-        // TODO: Implement DMC active flag
-        // if (apu->delta.bytes_remaining > 0)
-        //     status |= 0x10;
+       // Bit 4: DMC active
+        if (apu->delta.bytes_remaining > 0)
+            status |= 0x10;
         
         // Bit 6: Frame interrupt flag
-        // TODO: Implement frame interrupt
-        // if (apu->frame_interrupt)
-        //     status |= 0x40;
+        if (apu->frame_interrupt)
+            status |= 0x40;
         
         // Bit 7: DMC interrupt flag
-        // TODO: Implement DMC interrupt
-        // if (apu->dmc_interrupt)
-        //     status |= 0x80;
+        if (apu->delta.irq_flag)
+            status |= 0x80;
         
         // Reading $4015 clears the frame interrupt flag
-        // apu->frame_interrupt = 0;
+        apu->frame_interrupt = 0;
         
         if (DEBUG) printf("[APU READ] $4015 Status: 0x%02X\n", status);
         return status;
@@ -724,14 +778,31 @@ Noise init_noise() {
 Delta init_dmc() {
     Delta delta;
 
+    delta.enabled = 0;
+
     delta.irq_enable = 0;
     delta.loop_enabled = 0;
     delta.playback_rate = 0;
 
-    delta.sample_counter = 0;
+    delta.output_level = 0;
+    delta.shift_register = 0;
+    delta.bits_remaining = 8;
+    delta.silence_flag = 1;
+
+    delta.sample_buffer = 0;
+    delta.sample_buffer_empty = 1;
+
+    delta.current_address = 0;
+    delta.bytes_remaining = 0;
 
     delta.sample_address = 0;
     delta.sample_length = 0;
+
+    delta.timer_counter = 0;
+    delta.timer_period = 0;
+
+    delta.irq_flag = 0;
+    delta.dma_pending = 0;
 
     if (DEBUG) printf("Initialized DMC Channel\n");
 
@@ -980,6 +1051,99 @@ void clock_noise_envelope(Noise *n) {
 void clock_noise_length(Noise *n) {
     if (!n->length_halt && n->length_counter > 0)
         n->length_counter--;
+}
+
+/**
+ * @brief Restarts the DMC sample from the beginning.
+ * 
+ * Called when channel is enabled and the bytes remaining falls to 0.
+ */
+void dmc_restart(Delta *d) {
+    d->current_address = d->sample_address;
+    d->bytes_remaining = d->sample_length;
+}
+
+/**
+ * @brief Feeds the next sample byte into the DMC from the bus DMA.
+ * 
+ * This function is called by the bus/CPU layer after it fulfills a dma_pending
+ * request.
+ */
+void dmc_load_sample_byte(APU *apu, uint8_t byte) {
+    apu->delta.dma_pending = 0;
+    apu->delta.sample_buffer = byte;
+    apu->delta.sample_buffer_empty = 0;
+
+    if (apu->delta.current_address == 0xFFFF)
+        apu->delta.current_address = 0x8000;
+    else
+        apu->delta.current_address++;
+
+    apu->delta.bytes_remaining--;
+
+    if (apu->delta.bytes_remaining == 0) {
+        if (apu->delta.loop_enabled) {
+            dmc_restart(&apu->delta);
+        } else if (apu->delta.irq_enable) {
+            apu->delta.irq_flag = 1;
+        }
+    }
+}
+
+/**
+ * @brief Ticks the DMC by one unit every CPU cycle.
+ * 
+ * Important to note that the DMC timer is clocked every CPU cycle (NOT APU cycle).
+ * When the timer expires it clocks the output unit.
+ */
+void dmc_tick(Delta *d) {
+    // try to fill the sample buffer if the memory reader has pending work
+    if (d->sample_buffer_empty && d->bytes_remaining > 0 && !d->dma_pending)
+        d->dma_pending = 1;
+
+    // clock the rate timer
+    if (d->timer_counter > 0) {
+        d->timer_counter--;
+        return;
+    }
+    d->timer_counter = d->timer_period;
+
+    // handle output unit
+    if (!d->silence_flag) {
+        if (d->shift_register & 1) {
+            if (d->output_level <= 125) d->output_level += 2;
+        } else {
+            if (d->output_level >= 2)   d->output_level -= 2;
+        }
+    }
+    d->shift_register >>= 1;
+
+    if (--d->bits_remaining == 0) {
+        d->bits_remaining = 8;
+
+        if (d->sample_buffer_empty) {
+            // no data available — output unit goes silent
+            d->silence_flag = 1;
+        } else {
+            // reload shift register from buffer and resume output
+            d->silence_flag     = 0;
+            d->shift_register   = d->sample_buffer;
+            d->sample_buffer_empty = 1;
+
+            // schedule next DMA fetch if there are bytes left
+            if (d->bytes_remaining > 0)
+                d->dma_pending = 1;
+        }
+    }
+}
+
+/**
+ * @brief Returns the current output for the DMC.
+ * 
+ * Used in the mixing function for the table lookup.
+ */
+uint8_t dmc_output(Delta *d) {
+    return d->output_level;
 }
 
 /**

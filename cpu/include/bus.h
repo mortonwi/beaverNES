@@ -21,10 +21,12 @@ typedef struct Bus {
     CPU *cpu;     
     Cartridge *rom;
     APU *apu;
+    uint8_t dmc_stall_cycles;  // CPU cycles remaining before current DMC DMA stall
 } Bus;
 
 Bus *bus_create(Memory *mem, APU *apu); 
 void bus_write(Bus *bus, uint16_t addr, uint8_t val); // writes a byte to a specific memory address
 uint8_t bus_read(Bus *bus, uint16_t addr); // reads a byte from a specific memory address
+void bus_service_dmc_dma(Bus *bus); // manages the DMC DMA stall
 
 #endif // BUS_H

@@ -125,6 +125,7 @@ int main(int argc, char **argv)
     // Keep ~80ms queued — prevents gaps without building up excess latency
     const Uint32 TARGET_QUEUED_BYTES = (Uint32)(have.freq * sizeof(float) * 0.08);
 
+    int pending_cpu_cycles = 0;
     bool running = true;
     SDL_Event event;
 
@@ -136,9 +137,8 @@ int main(int argc, char **argv)
         }
 
         // Generate audio only when the queue needs topped off
-        if (SDL_GetQueuedAudioSize(device) < TARGET_QUEUED_BYTES) {
+        if (SDL_GetQueuedAudioSize(device) < TARGET_QUEUED_BYTES) {            
             for (int i = 0; i < AUDIO_BUFFER_SAMPLES; i++) {
-            
                 cpu_sample_frac += CPU_PER_SAMPLE;
                 int cycles_to_run = (int)cpu_sample_frac;
                 cpu_sample_frac -= (double)cycles_to_run;
@@ -148,25 +148,32 @@ int main(int argc, char **argv)
 
                 while (cycles_to_run > 0) {
                     // cpu_step returns the real cycle count for this instruction
-                    int inst_cycles = cpu_step(cpu);
-                    if (inst_cycles < 1) inst_cycles = 1;
-
-                    cycles_to_run -= inst_cycles;
-
-                    for (int c = 0; c < inst_cycles; c++) {
-                        // PPU runs 3 cycles per CPU cycle
-                        for (int p = 0; p < 3; p++) {
-                            ppu_clock();
-                            if (ppu_poll_nmi())
-                                cpu_nmi(cpu);
-                        }
-
-                        // APU ticks once per CPU cycle
-                        apu_tick(apu);
-
-                        accum += apu_get_output(apu);
-                        accum_count++;
+                    if (pending_cpu_cycles == 0 && bus->dmc_stall_cycles == 0) {
+                        pending_cpu_cycles = cpu_step(cpu);
+                        if (pending_cpu_cycles < 1) pending_cpu_cycles = 1;
                     }
+
+                    // PPU runs 3 cycles per CPU cycle
+                    for (int p = 0; p < 3; p++) {
+                        ppu_clock();
+                        if (ppu_poll_nmi())
+                            cpu_nmi(cpu);
+                    }
+
+                    // APU ticks once per CPU cycle
+                    apu_tick(apu);
+                    bus_service_dmc_dma(bus);
+
+                    // Consume one cycle — either a real CPU cycle or a stall cycle
+                    if (bus->dmc_stall_cycles > 0) {
+                        // stall cycle: bus_service_dmc_dma already decremented it
+                    } else if (pending_cpu_cycles > 0) {
+                        pending_cpu_cycles--;
+                    }
+
+                    accum += apu_get_output(apu);
+                    accum_count++;
+                    cycles_to_run--;
                 }
 
                 // Average to [0..1], then remap to [-1..+1] for SDL
