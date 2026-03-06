@@ -12,10 +12,6 @@
  *   [ ]  Implement DMC Channel
  */
 
-// test values
-#define NTSC_QUARTER_FRAME_CYCLES 7457
-#define NTSC_HALF_FRAME_CYCLES   14914
-
 #define DEBUG false
 
 // pulse sequencer duty cycle sequences
@@ -83,12 +79,13 @@ static const uint16_t dmc_rate_pal[16] = {
     176, 148, 132, 118,  98,  78,  66,  50
 };
 
-// function headers
+// apu function headers
 void apu_reset(APU *apu);
 void apu_write(APU *apu, uint16_t addr, uint8_t value);
 uint8_t apu_read(APU *apu, uint16_t addr);
 int quarter_frame_tick(APU *apu);
 int half_frame_tick(APU *apu);
+static void build_mixer_tables(APU *apu);
 
 // init headers
 Pulse init_pulse(int id);
@@ -100,7 +97,6 @@ Delta init_dmc();
 void pulse_tick(Pulse *p);
 uint8_t pulse_output(Pulse *p);
 static uint8_t pulse_get_volume(Pulse *p);
-uint8_t pulse_output(Pulse *p);
 void clock_pulse_envelope(Pulse *p);
 uint16_t pulse_sweep_target(Pulse *p);
 void clock_pulse_sweep(Pulse *p);
@@ -133,17 +129,6 @@ void init_apu(APU *apu, Region region) {
     // set appropriate region
     apu->region = region;
     
-    // initialize registers
-    for (int i = 0; i < 4; i++) {
-        apu->registers.pulse1[i] = 0;
-        apu->registers.pulse2[i] = 0;
-        apu->registers.triangle[i] = 0;
-        apu->registers.noise[i] = 0;
-        apu->registers.dmc[i] = 0;
-    }
-    apu->registers.status = 0;
-    apu->registers.frame_counter = 0;
-
     // set cycle to 0
     apu->cycles = 0;
 
@@ -160,7 +145,29 @@ void init_apu(APU *apu, Region region) {
     apu->noise = init_noise();
     apu->delta = init_dmc();
 
+    build_mixer_tables(apu);
+
     if (DEBUG) printf("Initialized APU\n");
+}
+
+/**
+ * @brief Creates efficient lookup tables for both the pulse and tnd outputs.
+ * 
+ * This is much faster than trying to do multiple floating point divisions during 
+ * audio generation. This was suggested by NESDev as a way to improve efficiency. 
+ */
+static void build_mixer_tables(APU *apu) {
+    // build pulse wave lookup table
+    apu->pulse_mix_table[0] = 0.0f;
+    for (int i = 1; i < 31; i++) {
+        apu->pulse_mix_table[i] = 95.52f / ((8128.0f / i) + 100.0f);
+    }
+
+    // build tnd lookup table 
+    // dmc set to 0 becuase its not implemented yet
+    apu->tnd_mix_table[0] = 0.0f;
+    for (int i = 1; i < 203; i++)
+        apu->tnd_mix_table[i] = 163.67f / ((24329.0f / i) + 100.0f);
 }
 
 /**
@@ -198,6 +205,9 @@ void apu_tick(APU *apu) {
 
 /**
  * @brief Returns generated audio for the current cycle.
+ * 
+ * Returns output and mix according to the spec listed for 
+ * the APU mixer lookup tables. 
  */
 float apu_get_output(APU *apu) {
     uint8_t pulse_sample1 = pulse_output(&apu->pulse1);
@@ -206,20 +216,14 @@ float apu_get_output(APU *apu) {
     uint8_t noise_sample  = noise_output(&apu->noise);
     uint8_t dmc_sample    = 0; // TODO: get from DMC channel
 
-    float pulse_out = 0.0f;
-    if (pulse_sample1 + pulse_sample2 > 0)
-        pulse_out = 95.88f / ((8128.0f / (pulse_sample1 + pulse_sample2)) + 100.0f);
+    // use pulse lookup table
+    float pulse_output = apu->pulse_mix_table[pulse_sample1 + pulse_sample2];
+    
+    // compute and use tnd_index in the tnd lookup table
+    int tnd_index = ((3 * tri_sample) + (2 * noise_sample) + dmc_sample);
+    float tnd_output = apu->tnd_mix_table[tnd_index];
 
-    float tnd_out = 0.0f;
-    float tnd_sum = tri_sample / 8227.0f + noise_sample / 12241.0f + dmc_sample / 22638.0f;
-    if (tnd_sum > 0)
-        tnd_out = 159.79f / ((1.0f / tnd_sum) + 100.0f);
-
-    float output = pulse_out + tnd_out;
-    if (output > 1.0f)  output = 1.0f;
-    if (output < 0.0f)  output = 0.0f;  // NES output is [0,1] before SDL conversion
-
-    return output;
+    return pulse_output + tnd_output;
 }
 
 /**
@@ -233,18 +237,7 @@ float apu_get_output(APU *apu) {
 void apu_reset(APU *apu) {
     // preserve caller's region and sample_rate
     Region region = apu->region;
-
-    // reset register mirror
-    for (int i = 0; i < 4; i++) {
-        apu->registers.pulse1[i] = 0;
-        apu->registers.pulse2[i] = 0;
-        apu->registers.triangle[i] = 0;
-        apu->registers.noise[i] = 0;
-        apu->registers.dmc[i] = 0;
-    }
-    apu->registers.status = 0;
-    apu->registers.frame_counter = 0;
-
+    
     // reset all channels to power-on defaults
     apu->pulse1   = init_pulse(1);
     apu->pulse2   = init_pulse(2);
@@ -402,7 +395,6 @@ void apu_write(APU *apu, uint16_t addr, uint8_t value) {
         case 0x400B:
             apu->triangle.timer_reload = (apu->triangle.timer_reload & 0xFF) | ((value & 0x07) << 8);
             apu->triangle.length_counter = length_table[(value >> 3) & 0x1F];
-            apu->triangle.seq_pos = 0;
             apu->triangle.linear_reload_flag = 1;
             
             if (DEBUG) 
@@ -654,6 +646,7 @@ Pulse init_pulse(int id) {
     Pulse pulse;
     
     pulse.id = id;
+    pulse.enabled = 0;
 
     pulse.duty_cycle = 0;
     pulse.length_halt = 0;
@@ -1000,1014 +993,7 @@ APU *apu_create() {
     init_apu(apu, NTSC);    // default to NTSC
     return apu;
 }
-/** 
- * @brief Free the memory allocated to the APU
- */
-void apu_free(APU *apu) {
-    if (!apu) return;
-    free(apu);
-}#include "apu.h"
-#include "stdio.h"
-#include "stdlib.h"
-/*
- * TODO:
- *   [X]  Implement Required Static Tables
- *   [X]  Implement Pulse Wave Generators
- *   [X]  Implement Triangle Wave Generators
- *   [X]  Implement Noise Wave Generator
- *   [X]  Set up APU and channel init
- *   [X]  Correctly output audio to SDL2 Interface
- *   [ ]  Implement DMC Channel
- */
 
-// test values
-#define NTSC_QUARTER_FRAME_CYCLES 7457
-#define NTSC_HALF_FRAME_CYCLES   14914
-
-#define DEBUG false
-
-// pulse sequencer duty cycle sequences
-static uint8_t duty[4][8] = {
-    {0, 1, 0, 0, 0, 0, 0, 0},
-    {0, 1, 1, 0, 0, 0, 0, 0},
-    {0, 1, 1, 1, 1, 0, 0, 0},
-    {1, 0, 0, 1, 1, 1, 1, 1}
-};
-
-/** 
- * @brief Length counter table for both NTSC and PAL.
- * 
- * A table full of note length values. Counter counts down at ~240hz for 
- * these lengths.
- * 
- * Used by Pulse, Triangle, Noise
- */
-static const uint8_t length_table[32] = {
-    10, 254, 20,  2, 40,  4, 80,  6,
-    160,  8, 60, 10, 14, 12, 26, 14,
-    12,  16, 24, 18, 48, 20, 96, 22,
-    192, 24, 72, 26, 16, 28, 32, 30
-};
-
-/**
- * @brief NTSC/PAL sequence table used for the triangle wave generator.
- */
-static const uint8_t triangle_seq[32] = {
-  15,14,13,12,11,10, 9, 8,
-   7, 6, 5, 4, 3, 2, 1, 0,
-   0, 1, 2, 3, 4, 5, 6, 7,
-   8, 9,10,11,12,13,14,15
-};
-
-/**
- * @brief Noise period tables for both NTSC and PAL.
- * 
- * Tables denoting how fast the noise Linear Feedback Shift Register (LFSR) 
- * shifts. Noise is generated by LFSR and tells the APU how often to shift it. 
- * 
- * Each value is the number of CPU cycles between shifts.
- */
-static const uint16_t noise_period_ntsc[16] = {
-      4,   8,  16,  32,  64,   96,  128,  160,
-    202, 254, 380, 508, 762, 1016, 2034, 4068
-};
-static const uint16_t noise_period_pal[16] = {
-      4,   8,  16,  32,  64,  80,   96,  112,
-    126, 160, 202, 254, 380, 508, 1016, 2034
-};
-
-/**
- * @brief Delta Modulation Channel rate tables for both NTSC and PAL.
- * 
- * Tables store hardcoded values for how fast a sample playback advances. This 
- * table tells the APU how fast to fetch the next bit.
- */
-static const uint16_t dmc_rate_ntsc[16] = {
-    428, 380, 340, 320, 286, 254, 226, 214,
-    190, 160, 142, 128, 106,  85,  72,  54
-};
-static const uint16_t dmc_rate_pal[16] = {
-    398, 354, 316, 298, 276, 236, 210, 198,
-    176, 148, 132, 118,  98,  78,  66,  50
-};
-
-// function headers
-void apu_reset(APU *apu);
-void apu_write(APU *apu, uint16_t addr, uint8_t value);
-uint8_t apu_read(APU *apu, uint16_t addr);
-int quarter_frame_tick(APU *apu);
-int half_frame_tick(APU *apu);
-
-// init headers
-Pulse init_pulse(int id);
-Triangle init_triangle();
-Noise init_noise();
-Delta init_dmc();
-
-// pulse headers
-void pulse_tick(Pulse *p);
-uint8_t pulse_output(Pulse *p);
-static uint8_t pulse_get_volume(Pulse *p);
-uint8_t pulse_output(Pulse *p);
-void clock_pulse_envelope(Pulse *p);
-uint16_t pulse_sweep_target(Pulse *p);
-void clock_pulse_sweep(Pulse *p);
-void clock_pulse_length(Pulse *p);
-
-// triangle headers
-void triangle_tick(Triangle *t);
-uint8_t triangle_output(Triangle *t);
-void clock_triangle_linear(Triangle *t);
-void clock_triangle_length(Triangle *t);
-
-// noise headers
-void noise_tick(Noise *n, Region region);
-uint8_t noise_output(Noise *n);
-void clock_noise_envelope(Noise *n);
-void clock_noise_length(Noise *n);
-
-// frame counter headers
-void write_frame_counter(APU *apu, uint8_t value);
-void clock_frame_counter(APU *apu);
-int quarter_frame_tick(APU *apu);
-int half_frame_tick(APU *apu);
-
-/**
- * @brief Initialize APU and create sound channels.
- * 
- * Initializes the APU with the correct region and safe initial values.
- */
-void init_apu(APU *apu, Region region) {
-    // set appropriate region
-    apu->region = region;
-    
-    // initialize registers
-    for (int i = 0; i < 4; i++) {
-        apu->registers.pulse1[i] = 0;
-        apu->registers.pulse2[i] = 0;
-        apu->registers.triangle[i] = 0;
-        apu->registers.noise[i] = 0;
-        apu->registers.dmc[i] = 0;
-    }
-    apu->registers.status = 0;
-    apu->registers.frame_counter = 0;
-
-    // set cycle to 0
-    apu->cycles = 0;
-
-    // manage the frame mode
-    apu->frame_mode = 0;
-    apu->frame_irq_inhibit = 1;  // Start with IRQ disabled
-    apu->frame_interrupt = 0;
-    apu->frame_counter_cycles = 0;
-
-    // initialize sound channels
-    apu->pulse1 = init_pulse(1);
-    apu->pulse2 = init_pulse(2);
-    apu->triangle = init_triangle();
-    apu->noise = init_noise();
-    apu->delta = init_dmc();
-
-    if (DEBUG) printf("Initialized APU\n");
-}
-
-/**
- * @brief Advance the internal state of the APU by one 'tick'
- */
-void apu_tick(APU *apu) {
-    // Pulse timers clock at the APU rate (every 2 CPU cycles)
-    if (apu->cycles % 2 == 0) {
-        pulse_tick(&apu->pulse1);
-        pulse_tick(&apu->pulse2);
-    }
-
-    triangle_tick(&apu->triangle);
-    noise_tick(&apu->noise, apu->region);
-    // TODO: dmc_tick(&apu->delta);
-
-    if (quarter_frame_tick(apu)) {
-        clock_pulse_envelope(&apu->pulse1);
-        clock_pulse_envelope(&apu->pulse2);
-        clock_triangle_linear(&apu->triangle);
-        clock_noise_envelope(&apu->noise);
-    }
-    if (half_frame_tick(apu)) {
-        clock_pulse_length(&apu->pulse1);
-        clock_pulse_length(&apu->pulse2);
-        clock_pulse_sweep(&apu->pulse1);
-        clock_pulse_sweep(&apu->pulse2);
-        clock_triangle_length(&apu->triangle);
-        clock_noise_length(&apu->noise);
-    }
-
-    clock_frame_counter(apu);
-    apu->cycles++;
-}
-
-/**
- * @brief Returns generated audio for the current cycle.
- */
-float apu_get_output(APU *apu) {
-    uint8_t pulse_sample1 = pulse_output(&apu->pulse1);
-    uint8_t pulse_sample2 = pulse_output(&apu->pulse2);
-    uint8_t tri_sample    = triangle_output(&apu->triangle);
-    uint8_t noise_sample  = noise_output(&apu->noise);
-    uint8_t dmc_sample    = 0; // TODO: get from DMC channel
-
-    float pulse_out = 0.0f;
-    if (pulse_sample1 + pulse_sample2 > 0)
-        pulse_out = 95.88f / ((8128.0f / (pulse_sample1 + pulse_sample2)) + 100.0f);
-
-    float tnd_out = 0.0f;
-    float tnd_sum = tri_sample / 8227.0f + noise_sample / 12241.0f + dmc_sample / 22638.0f;
-    if (tnd_sum > 0)
-        tnd_out = 159.79f / ((1.0f / tnd_sum) + 100.0f);
-
-    float output = pulse_out + tnd_out;
-    if (output > 1.0f)  output = 1.0f;
-    if (output < 0.0f)  output = 0.0f;  // NES output is [0,1] before SDL conversion
-
-    return output;
-}
-
-/**
- * @brief Full APU reset.
- *
- * Resets every channel and all frame-counter state to power-on defaults
- * while preserving the region setting (NTSC/PAL).  After this call the
- * APU is in the same state as a freshly initialised one without needing
- * to know the region again.
- */
-void apu_reset(APU *apu) {
-    // preserve caller's region and sample_rate
-    Region region = apu->region;
-
-    // reset register mirror
-    for (int i = 0; i < 4; i++) {
-        apu->registers.pulse1[i] = 0;
-        apu->registers.pulse2[i] = 0;
-        apu->registers.triangle[i] = 0;
-        apu->registers.noise[i] = 0;
-        apu->registers.dmc[i] = 0;
-    }
-    apu->registers.status = 0;
-    apu->registers.frame_counter = 0;
-
-    // reset all channels to power-on defaults
-    apu->pulse1   = init_pulse(1);
-    apu->pulse2   = init_pulse(2);
-    apu->triangle = init_triangle();
-    apu->noise    = init_noise();
-    apu->delta    = init_dmc();
-
-    // reset frame sequencer
-    apu->cycles              = 0;
-    apu->frame_mode          = 0;
-    apu->frame_irq_inhibit   = 1;
-    apu->frame_interrupt     = 0;
-    apu->frame_counter_cycles = 0;
-    apu->region      = region;
-
-    if (DEBUG) 
-        printf("APU Reset\n");
-}
-
-/**
- * @brief Handles APU register write operations based on the register table.
- * 
- * Documentation for this section is on the Wiki.
- */
-void apu_write(APU *apu, uint16_t addr, uint8_t value) {
-    if (DEBUG) printf("[APU WRITE] Addr: 0x%04X, Value: 0x%02X\n", addr, value);
-
-    switch (addr) {
-        case 0x4000:
-            apu->pulse1.duty_cycle = (value >> 6) & 0x3;
-            apu->pulse1.length_halt = (value >> 5) & 1;
-            apu->pulse1.constant_volume = (value >> 4) & 1;
-            apu->pulse1.envelope_volume = value & 0xF;
-
-            if (DEBUG) 
-                printf("  [Pulse1] duty_cycle=%d, length_halt=%d, constant_volume=%d, envelope_volume=%d\n",
-                    apu->pulse1.duty_cycle,
-                    apu->pulse1.length_halt,
-                    apu->pulse1.constant_volume,
-                    apu->pulse1.envelope_volume
-                );
-            break;
-
-        case 0x4001:
-            apu->pulse1.sweep_enabled = (value >> 7) & 1;
-            apu->pulse1.sweep_period = (value >> 4) & 7;
-            apu->pulse1.sweep_negate = (value >> 3) & 1;
-            apu->pulse1.sweep_shift = value & 7;
-            apu->pulse1.sweep_reload = 1;
-
-            if (DEBUG) 
-                printf("  [Pulse1 Sweep] enabled=%d, period=%d, negate=%d, shift=%d, reload=%d\n",
-                    apu->pulse1.sweep_enabled,
-                    apu->pulse1.sweep_period,
-                    apu->pulse1.sweep_negate,
-                    apu->pulse1.sweep_shift,
-                    apu->pulse1.sweep_reload
-                );
-            break;
-
-        case 0x4002:
-            apu->pulse1.timer_reload = (apu->pulse1.timer_reload & 0x700) | value;
-
-            if (DEBUG) printf("  [Pulse1 Timer Low] timer_reload=%d\n", apu->pulse1.timer_reload);
-            break;
-
-        case 0x4003:
-            apu->pulse1.timer_reload = (apu->pulse1.timer_reload & 0xFF) | ((value & 0x7) << 8);
-            apu->pulse1.length_counter = length_table[(value >> 3) & 0x1F];
-            apu->pulse1.seq_pos = 0;
-            apu->pulse1.envelope_start = 1;
-
-            if (DEBUG) 
-                printf("  [Pulse1 Timer High] timer_reload=%d, length_counter=%d, seq_pos=%d, envelope_start=%d\n",
-                    apu->pulse1.timer_reload,
-                    apu->pulse1.length_counter,
-                    apu->pulse1.seq_pos,
-                    apu->pulse1.envelope_start
-                );
-            break;
-
-        case 0x4004:
-            apu->pulse2.duty_cycle = (value >> 6) & 0x3;
-            apu->pulse2.length_halt = (value >> 5) & 1;
-            apu->pulse2.constant_volume = (value >> 4) & 1;
-            apu->pulse2.envelope_volume = value & 0xF;
-
-            if (DEBUG) 
-                printf("  [Pulse2] duty_cycle=%d, length_halt=%d, constant_volume=%d, envelope_volume=%d\n",
-                    apu->pulse2.duty_cycle,
-                    apu->pulse2.length_halt,
-                    apu->pulse2.constant_volume,
-                    apu->pulse2.envelope_volume
-                );
-            break;
-
-        case 0x4005:
-            apu->pulse2.sweep_enabled = (value >> 7) & 1;
-            apu->pulse2.sweep_period = (value >> 4) & 7;
-            apu->pulse2.sweep_negate = (value >> 3) & 1;
-            apu->pulse2.sweep_shift = value & 7;
-            apu->pulse2.sweep_reload = 1;
-
-            if (DEBUG) 
-                printf("  [Pulse2 Sweep] enabled=%d, period=%d, negate=%d, shift=%d, reload=%d\n",
-                    apu->pulse2.sweep_enabled,
-                    apu->pulse2.sweep_period,
-                    apu->pulse2.sweep_negate,
-                    apu->pulse2.sweep_shift,
-                    apu->pulse2.sweep_reload
-                );
-            break;
-
-        case 0x4006:
-            apu->pulse2.timer_reload = (apu->pulse2.timer_reload & 0x700) | value;
-
-            if (DEBUG) printf("  [Pulse1 Timer Low] timer_reload=%d\n", apu->pulse2.timer_reload);
-            break;
-
-        case 0x4007:
-            apu->pulse2.timer_reload = (apu->pulse2.timer_reload & 0xFF) | ((value & 0x7) << 8);
-            apu->pulse2.length_counter = length_table[(value >> 3) & 0x1F];
-            apu->pulse2.seq_pos = 0;
-            apu->pulse2.envelope_start = 1;
-
-            if (DEBUG) 
-                printf("  [Pulse2 Timer High] timer_reload=%d, length_counter=%d, seq_pos=%d, envelope_start=%d\n",
-                    apu->pulse2.timer_reload,
-                    apu->pulse2.length_counter,
-                    apu->pulse2.seq_pos,
-                    apu->pulse2.envelope_start
-                );
-            break;
-
-        case 0x4008:
-            apu->triangle.control_flag = (value >> 7) & 0x01;
-            apu->triangle.linear_reload_value = value & 0x7F;
-            
-            if (DEBUG) 
-                printf("  [Triangle $4008] control_flag=%d, linear_reload_value=%d\n",
-                    apu->triangle.control_flag,
-                    apu->triangle.linear_reload_value
-                );
-            break;
-
-        case 0x400A:
-            apu->triangle.timer_reload = (apu->triangle.timer_reload & 0x700) | value;
-            
-            if (DEBUG) 
-                printf("  [Triangle Timer Low $400A] timer_reload=%d\n",
-                    apu->triangle.timer_reload
-                );
-            break;
-
-        case 0x400B:
-            apu->triangle.timer_reload = (apu->triangle.timer_reload & 0xFF) | ((value & 0x07) << 8);
-            apu->triangle.length_counter = length_table[(value >> 3) & 0x1F];
-            apu->triangle.seq_pos = 0;
-            apu->triangle.linear_reload_flag = 1;
-            
-            if (DEBUG) 
-                printf("  [Triangle Timer High $400B] timer_reload=%d, length_counter=%d, linear_reload_flag=%d\n",
-                    apu->triangle.timer_reload,
-                    apu->triangle.length_counter,
-                    apu->triangle.linear_reload_flag
-                );
-            break;
-
-        case 0x400C:
-            apu->noise.length_halt = (value >> 5) & 1;
-            apu->noise.constant_volume = (value >> 4) & 1;
-            apu->noise.envelope_volume = value & 0xF;
-
-            if (DEBUG) 
-                printf("  [Noise $400C] length_halt=%d, constant_volume=%d, envelope_volume=%d\n",
-                    apu->noise.length_halt, 
-                    apu->noise.constant_volume, 
-                    apu->noise.envelope_volume
-                );
-            break;
-
-        case 0x400E:
-            apu->noise.lfsr_mode = (value >> 7) & 1;
-            apu->noise.noise_period = value & 0xF;
-
-            if (DEBUG) 
-                printf("  [Noise $400E] lfsr_mode=%d, noise_period=%d\n",
-                    apu->noise.lfsr_mode, 
-                    apu->noise.noise_period
-                );
-            break;
-
-        case 0x400F:
-            apu->noise.length_counter = length_table[(value >> 3) & 0x1F];
-            apu->noise.envelope_start = 1;
-
-            if (DEBUG) 
-                printf("  [Noise $400F] length_counter=%d\n", 
-                    apu->noise.length_counter
-                );
-            break;
-
-        case 0x4015:
-            apu->pulse1.enabled = value & 0x01;
-            apu->pulse2.enabled = (value >> 1) & 0x01;
-            apu->triangle.enabled = (value >> 2) & 0x01;
-            apu->noise.enabled = (value >> 3) & 0x01;
-
-            if (!apu->pulse1.enabled) apu->pulse1.length_counter = 0;
-            if (!apu->pulse2.enabled) apu->pulse2.length_counter = 0;
-            if (!apu->triangle.enabled) apu->triangle.length_counter = 0;
-            if (!apu->noise.enabled) apu->noise.length_counter = 0;
-
-            if (DEBUG) 
-                printf("  [Status] pulse1_enabled=%d, pulse2_enabled=%d, triangle_enabled=%d, noise_enabled=%d\n",
-                    apu->pulse1.enabled,
-                    apu->pulse2.enabled,
-                    apu->triangle.enabled,
-                    apu->noise.enabled
-                );
-            break;
-
-            case 0x4017:
-                write_frame_counter(apu, value);
-                break;
-
-        default:
-            printf("  [Warning] Unhandled APU write at 0x%04X\n", addr);
-            break;
-    }
-}
-
-/**
- * @brief Handles APU register read operations.
- * 
- * Created with AI assistance. The main register that's read is 
- * $4015 (status register). Returns the status of all channels and IRQ flags.
- */
-uint8_t apu_read(APU *apu, uint16_t addr) {
-    if (addr == 0x4015) {
-        uint8_t status = 0;
-        
-        // Bit 0: Pulse 1 length counter > 0
-        if (apu->pulse1.length_counter > 0)
-            status |= 0x01;
-        
-        // Bit 1: Pulse 2 length counter > 0
-        if (apu->pulse2.length_counter > 0)
-            status |= 0x02;
-        
-        // Bit 2: Triangle length counter > 0
-        if (apu->triangle.length_counter > 0)
-            status |= 0x04;
-        
-        // Bit 3: Noise length counter > 0
-        if (apu->noise.length_counter > 0)
-            status |= 0x08;
-        
-        // Bit 4: DMC active
-        // TODO: Implement DMC active flag
-        // if (apu->delta.bytes_remaining > 0)
-        //     status |= 0x10;
-        
-        // Bit 6: Frame interrupt flag
-        // TODO: Implement frame interrupt
-        // if (apu->frame_interrupt)
-        //     status |= 0x40;
-        
-        // Bit 7: DMC interrupt flag
-        // TODO: Implement DMC interrupt
-        // if (apu->dmc_interrupt)
-        //     status |= 0x80;
-        
-        // Reading $4015 clears the frame interrupt flag
-        // apu->frame_interrupt = 0;
-        
-        if (DEBUG) printf("[APU READ] $4015 Status: 0x%02X\n", status);
-        return status;
-    }
-    
-    if (DEBUG) printf("[APU READ] Unhandled read from 0x%04X\n", addr);
-    return 0;
-}
-
-/**
- * @brief Quarter frame tick using cycle counts.
- */
-int quarter_frame_tick(APU *apu) {
-    uint16_t fc = apu->frame_counter_cycles;
-    
-    if (apu->region == PAL) {
-        // TODO: implement proper PAL frame sequencer
-        if (apu->frame_mode == 0) {
-            // 4-step mode
-            return (fc == 8313 || fc == 16627 || fc == 24940 || fc == 33254);
-        } else {
-            // 5-step mode
-            return (fc == 8313 || fc == 16627 || fc == 24940 || fc == 41561);
-        }
-    } else {
-        if (apu->frame_mode == 0) {
-            // 4-step mode: quarter frames at 3728.5, 7456.5, 11185.5, 14914.5
-            return (fc == 3729 || fc == 7457 || fc == 11186 || fc == 14915);
-        } else {
-            // 5-step mode: quarter frames at 3728.5, 7456.5, 11185.5, 18640.5
-            return (fc == 3729 || fc == 7457 || fc == 11186 || fc == 18641);
-        }
-    }
-}
-
-/**
- * @brief Half frame tick using accurate cycles.
- */
-int half_frame_tick(APU *apu) {
-    uint16_t fc = apu->frame_counter_cycles;
-    
-    if (apu->region == PAL) {
-        if (apu->frame_mode == 0) {
-            // 4-step mode
-            return (fc == 16627 || fc == 33254);
-        } else {
-            // 5-step mode
-            return (fc == 16627 || fc == 41561);
-        }
-    } else {
-        if (apu->frame_mode == 0) {
-            // 4-step mode: half frames at 7456.5, 14914.5
-            return (fc == 7457 || fc == 14915);
-        } else {
-            // 5-step mode: half frames at 7456.5, 18640.5
-            return (fc == 7457 || fc == 18641);
-        }
-    }
-}
-
-/**
- * @brief Check if frame should reset and handle IRQ.
- * 
- * The reset point is (last_fire_cycle + 1) so that the final half-frame/
- * quarter-frame tick at cycle 14915 (4-step) or 18641 (5-step) fires
- * BEFORE the counter is cleared.
- */
-void clock_frame_counter(APU *apu) {
-    apu->frame_counter_cycles++;
-    
-    uint16_t reset_point;
-    
-    if (apu->region == PAL) {
-        reset_point = apu->frame_mode ? 41562 : 33255;
-    } else {
-        //  NTSC 4-step: fires at 7457 & 14915 → reset after 14915 is seen
-        //  NTSC 5-step: fires at 7457 & 18641 → reset after 18641 is seen
-        reset_point = apu->frame_mode ? 18642 : 14916;
-    }
-    
-    if (apu->frame_counter_cycles >= reset_point) {
-        apu->frame_counter_cycles = 0;
-        
-        // In 4-step mode, set frame interrupt flag
-        if (apu->frame_mode == 0 && !apu->frame_irq_inhibit) {
-            apu->frame_interrupt = 1;
-        }
-    }
-}
-
-/**
- * @brief Handle frame counter register write ($4017).
- * 
- * Created with AI assistance.
- */
-void write_frame_counter(APU *apu, uint8_t value) {
-    apu->frame_mode = (value >> 7) & 1;           // Bit 7: mode (0 = 4-step, 1 = 5-step)
-    apu->frame_irq_inhibit = (value >> 6) & 1;    // Bit 6: IRQ inhibit
-    
-    // If IRQ inhibit flag is set, clear the frame interrupt flag
-    if (apu->frame_irq_inhibit) {
-        apu->frame_interrupt = 0;
-    }
-    
-    // Reset the frame counter
-    apu->frame_counter_cycles = 0;
-    
-    // If 5-step mode, immediately clock all units
-    if (apu->frame_mode == 1) {
-        clock_pulse_envelope(&apu->pulse1);
-        clock_pulse_envelope(&apu->pulse2);
-        clock_triangle_linear(&apu->triangle);
-        clock_noise_envelope(&apu->noise);
-        
-        clock_pulse_length(&apu->pulse1);
-        clock_pulse_length(&apu->pulse2);
-        clock_pulse_sweep(&apu->pulse1);
-        clock_pulse_sweep(&apu->pulse2);
-        clock_triangle_length(&apu->triangle);
-        clock_noise_length(&apu->noise);
-    }
-    
-    if (DEBUG) 
-        printf("  [Frame Counter $4017] mode=%d (%s), irq_inhibit=%d\n",
-            apu->frame_mode,
-            apu->frame_mode ? "5-step" : "4-step",
-            apu->frame_irq_inhibit
-        );
-}
-
-Pulse init_pulse(int id) {
-    Pulse pulse;
-    
-    pulse.id = id;
-
-    pulse.duty_cycle = 0;
-    pulse.length_halt = 0;
-    pulse.constant_volume = 0;
-    
-    pulse.envelope_volume = 0;
-    pulse.envelope_start = 1;
-    pulse.envelope_divider = 0;
-    pulse.envelope_decay = 0;
-
-    pulse.sweep_enabled = 0;
-    pulse.sweep_period = 0;
-    pulse.sweep_negate = 0;
-    pulse.sweep_shift = 0;
-    pulse.sweep_divider = 0;
-    pulse.sweep_reload = 0;
-
-    pulse.timer_reload = 0;
-    pulse.timer_counter = 0;
-    pulse.seq_pos = 0;
-    pulse.length_counter = 0;
-
-    if (DEBUG) printf("Initialized Pulse Channel %d\n", pulse.id);
-
-    return pulse;
-}
-
-Triangle init_triangle() {
-    Triangle triangle;
-
-    triangle.enabled = 0;
-    
-    triangle.length_counter = 0;
-    triangle.control_flag = 0;
-
-    triangle.linear_counter = 0;
-    triangle.linear_reload_value = 0;
-    triangle.linear_reload_flag = 0;
-
-    triangle.timer_reload = 0;
-    triangle.timer_counter = 0;
-    
-    triangle.seq_pos = 0;
-
-    if (DEBUG) printf("Initialized Triangle Channel\n");
-
-    return triangle;
-}
-
-Noise init_noise() {
-    Noise noise;
-
-    noise.enabled = 0;
-    noise.length_halt = 0;
-    noise.constant_volume = 0;
-    noise.envelope_volume = 0;
-    
-    noise.envelope_divider = 0;
-    noise.envelope_decay = 0;
-    noise.envelope_start = 1;
-
-    noise.lfsr_mode = 0;
-    noise.noise_period = 0;
-    
-    noise.timer_counter = 0;
-    noise.length_counter = 0;
-    
-    noise.lfsr = 1;  // default is initialized to 1 and NOT 0
-
-    if (DEBUG) printf("Initialized Noise Channel\n");
-
-    return noise;
-}
-
-Delta init_dmc() {
-    Delta delta;
-
-    delta.irq_enable = 0;
-    delta.loop_enabled = 0;
-    delta.playback_rate = 0;
-
-    delta.sample_counter = 0;
-
-    delta.sample_address = 0;
-    delta.sample_length = 0;
-
-    if (DEBUG) printf("Initialized DMC Channel\n");
-
-    return delta;
-}
-
-/**
- * @brief Advances the pulse channel by one CPU cycle.
- * 
- * It updates the internal timer for the pulse channel.
- * If the timer reaches 0, it reloads from the timer reload and advances the
- * waveform sequence by one step. Otherwise decrement.
- */
-void pulse_tick(Pulse *p) {
-    if (p->timer_counter == 0) {
-        p->timer_counter = p->timer_reload;  // counts T..0 = T+1 APU ticks per step
-        p->seq_pos = (p->seq_pos + 1) & 7;
-    } else {
-        p->timer_counter--;
-    }
-}
-
-/**
- * @brief Returns the volume for a pulse channel using envelope and decay. 
- */
-static uint8_t pulse_get_volume(Pulse *p) {
-    return p->constant_volume ? p->envelope_volume : p->envelope_decay;
-}
-
-/**
- * @brief Amplitude output function.
- * 
- * Checks if the note should be playing and calculates output based on the duty sequence.
- */
-uint8_t pulse_output(Pulse *p) {
-    if (!p->enabled) return 0;
-    if (p->length_counter == 0) return 0;
-    if (p->timer_reload < 8) return 0;
-
-    if (pulse_sweep_target(p) > 0x7FF)
-        return 0;
-
-    uint8_t vol = pulse_get_volume(p);
-
-    return duty[p->duty_cycle][p->seq_pos] ? vol : 0;
-}
-
-/**
- * @brief Manage the pulse channels envelope.
- * 
- * AI assisted function based on established envelope understanding.
- * Manages Pulse envelope by handling the envelope clock.
- */
-void clock_pulse_envelope(Pulse *p) {
-    if (p->envelope_start) {
-        p->envelope_start = 0;
-        p->envelope_decay = 15;
-        p->envelope_divider = p->envelope_volume;
-    } else {
-        if (p->envelope_divider == 0) {
-            p->envelope_divider = p->envelope_volume;
-
-            if (p->envelope_decay > 0)
-                p->envelope_decay--;
-            else if (p->length_halt)
-                p->envelope_decay = 15;
-        } else {
-            p->envelope_divider--;
-        }
-    }
-}
-
-/**
- * @brief Implements the pulse sweep target.
- * 
- * Implements a weird quirk that exists in the NES.
- */
-uint16_t pulse_sweep_target(Pulse *p) {
-    int32_t change = (int32_t)(p->timer_reload >> p->sweep_shift);
-    int32_t target;
-
-    if (p->sweep_negate) {
-        // Pulse 1 subtracts one extra (ones-complement quirk)
-        target = (int32_t)p->timer_reload - change - (p->id == 1 ? 1 : 0);
-        if (target < 0) target = 0;   // can't go below 0
-    } else {
-        target = (int32_t)p->timer_reload + change;
-    }
-
-    return (uint16_t)target;
-}
-
-/**
- * @brief Handles internal pulse clock for sweep.
- */
-void clock_pulse_sweep(Pulse *p) {
-    uint16_t target = pulse_sweep_target(p);
-
-    int mute = (p->timer_reload < 8) || (target > 0x7FF);
-
-    if (p->sweep_divider == 0 &&
-        p->sweep_enabled &&
-        p->sweep_shift > 0 &&
-        !mute) {
-
-        p->timer_reload = target;
-    }
-
-    if (p->sweep_divider == 0 || p->sweep_reload) {
-        p->sweep_divider = p->sweep_period;
-        p->sweep_reload = 0;
-    } else {
-        p->sweep_divider--;
-    }
-}
-
-/**
- * @brief Steps through the pulse waves clock.
- */
-void clock_pulse_length(Pulse *p) {
-    if (!p->length_halt && p->length_counter > 0)
-        p->length_counter--;
-}
-
-/**
- * @brief Handles the logic for the triangle timer and sequencer each tick.
- */
-void triangle_tick(Triangle *t) {
-    if (t->timer_counter == 0) {
-        t->timer_counter = t->timer_reload;
-
-        if (t->length_counter > 0 && t->linear_counter > 0) {
-            t->seq_pos = (t->seq_pos + 1) & 31;
-        }
-    } else {
-        t->timer_counter--;
-    }
-}
-
-/**
- * @brief Handles the output for the triangle wave generator.
- */
-uint8_t triangle_output(Triangle *t) {
-    if (!t->enabled) return 0;
-    if (t->length_counter == 0) return 0;
-    if (t->linear_counter == 0) return 0;
-    if (t->timer_reload < 2) return 0;
-
-    return triangle_seq[t->seq_pos];
-}
-
-/**
- * @brief Quarter frame linear counter clocking logic.
- */
-void clock_triangle_linear(Triangle *t) {
-    if (t->linear_reload_flag) {
-        t->linear_counter = t->linear_reload_value;
-    } else if (t->linear_counter > 0) {
-        t->linear_counter--;
-    }
-
-    if (!t->control_flag) {
-        t->linear_reload_flag = 0;
-    }
-}
-
-/**
- * @brief Steps through the triangle waves clock.
- */
-void clock_triangle_length(Triangle *t) {
-    if (!t->control_flag && t->length_counter > 0)
-        t->length_counter--;
-}
-
-/**
- * @brief Advances the noise channel LFSR by one APU cycle.
- * 
- * The noise channel uses a 15-bit Linear Feedback Shift Register (LFSR) to
- * generate pseudo-random noise. The timer controls how fast the LFSR shifts.
- */
-void noise_tick(Noise *n, Region region) {
-    // Get the appropriate period table
-    const uint16_t *period_table = (region == PAL) ? noise_period_pal : noise_period_ntsc;
-    
-    // Decrement timer
-    if (n->timer_counter == 0) {
-        n->timer_counter = period_table[n->noise_period];
-        
-        // Shift LFSR
-        uint8_t feedback;
-        if (n->lfsr_mode) {
-            feedback = ((n->lfsr >> 0) ^ (n->lfsr >> 6)) & 1;
-        } else {
-            feedback = ((n->lfsr >> 0) ^ (n->lfsr >> 1)) & 1;
-        }
-        
-        n->lfsr = (n->lfsr >> 1) | (feedback << 14);
-    } else {
-        n->timer_counter--;
-    }
-}
-
-/**
- * @brief Get the volume for noise channel.
- */
-static uint8_t noise_get_volume(Noise *n) {
-    return n->constant_volume ? n->envelope_volume : n->envelope_decay;
-}
-
-/**
- * @brief Outputs the noise channel sample.
- */
-uint8_t noise_output(Noise *n) {
-    if (!n->enabled) return 0;
-    if (n->length_counter == 0) return 0;
-    if ((n->lfsr & 1) == 1) return 0;
-    
-    return noise_get_volume(n);
-}
-
-/**
- * @brief Clock the noise envelope (called at quarter frame).
- */
-void clock_noise_envelope(Noise *n) {
-    if (n->envelope_start) {
-        n->envelope_start = 0;
-        n->envelope_decay = 15;
-        n->envelope_divider = n->envelope_volume;
-    } else {
-        if (n->envelope_divider == 0) {
-            n->envelope_divider = n->envelope_volume;
-            
-            if (n->envelope_decay > 0)
-                n->envelope_decay--;
-            else if (n->length_halt)
-                n->envelope_decay = 15;
-        } else {
-            n->envelope_divider--;
-        }
-    }
-}
-
-/**
- * @brief Clock the noise length counter (called at half frame).
- */
-void clock_noise_length(Noise *n) {
-    if (!n->length_halt && n->length_counter > 0)
-        n->length_counter--;
-}
-
-/**
- * Notes from elvis-dev: 
- * @brief Creates and initializes a new APU instance.
- * Allocates memory and sets default region to NTSC using init_apu().
- */
-APU *apu_create() {
-    APU *apu = malloc(sizeof(APU));
-    if (!apu) return NULL;
-    init_apu(apu, NTSC);    // default to NTSC
-    return apu;
-}
 /** 
  * @brief Free the memory allocated to the APU
  */
