@@ -47,7 +47,7 @@ enum {
 
 CPU *cpu_create(void *bus); // creates cpu, connects to bus
 void cpu_reset(CPU *cpu); // sets registers, clears data, loads inital PC (program counter)
-void cpu_step(CPU *cpu); // executes a single CPU cycle
+int cpu_step(CPU *cpu); // executes a single CPU cycle
 void cpu_connect_bus(CPU *cpu, void *bus); // connects cpu to bus
 void cpu_nmi(CPU *cpu); //notes from elvis-dev: non-maskable interrupt, triggered by PPU at start of vertical blanking
 

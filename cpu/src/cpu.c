@@ -53,7 +53,7 @@ void cpu_reset(CPU *cpu) {
     cpu->cycles = 7; // reset takes time
 }
 
-void cpu_step(CPU *cpu) {
+int cpu_step(CPU *cpu) {
     Bus *bus = (Bus*)cpu->bus;
     // fetch opcode
     uint8_t opcode = bus_read(bus, cpu->PC++);
@@ -67,6 +67,7 @@ void cpu_step(CPU *cpu) {
 
     // cycle accounting
     cpu->cycles += op->cycles;
+    return op->cycles;
 }
 
 //notes from elvis-dev: Implement stack operations for JSR/RTS and interrupts

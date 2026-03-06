@@ -27,7 +27,7 @@
  */
 
 #include "test_apu.h"
-#include "src/apu.h"
+#include "apu.h"
 
 #include <stdio.h>
 #include <math.h>

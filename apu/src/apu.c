@@ -12,10 +12,6 @@
  *   [ ]  Implement DMC Channel
  */
 
-// test values
-#define NTSC_QUARTER_FRAME_CYCLES 7457
-#define NTSC_HALF_FRAME_CYCLES   14914
-
 #define DEBUG false
 
 // pulse sequencer duty cycle sequences
@@ -83,12 +79,13 @@ static const uint16_t dmc_rate_pal[16] = {
     176, 148, 132, 118,  98,  78,  66,  50
 };
 
-// function headers
+// apu function headers
 void apu_reset(APU *apu);
 void apu_write(APU *apu, uint16_t addr, uint8_t value);
 uint8_t apu_read(APU *apu, uint16_t addr);
 int quarter_frame_tick(APU *apu);
 int half_frame_tick(APU *apu);
+static void build_mixer_tables(APU *apu);
 
 // init headers
 Pulse init_pulse(int id);
@@ -100,7 +97,6 @@ Delta init_dmc();
 void pulse_tick(Pulse *p);
 uint8_t pulse_output(Pulse *p);
 static uint8_t pulse_get_volume(Pulse *p);
-uint8_t pulse_output(Pulse *p);
 void clock_pulse_envelope(Pulse *p);
 uint16_t pulse_sweep_target(Pulse *p);
 void clock_pulse_sweep(Pulse *p);
@@ -133,17 +129,6 @@ void init_apu(APU *apu, Region region) {
     // set appropriate region
     apu->region = region;
     
-    // initialize registers
-    for (int i = 0; i < 4; i++) {
-        apu->registers.pulse1[i] = 0;
-        apu->registers.pulse2[i] = 0;
-        apu->registers.triangle[i] = 0;
-        apu->registers.noise[i] = 0;
-        apu->registers.dmc[i] = 0;
-    }
-    apu->registers.status = 0;
-    apu->registers.frame_counter = 0;
-
     // set cycle to 0
     apu->cycles = 0;
 
@@ -160,7 +145,29 @@ void init_apu(APU *apu, Region region) {
     apu->noise = init_noise();
     apu->delta = init_dmc();
 
+    build_mixer_tables(apu);
+
     if (DEBUG) printf("Initialized APU\n");
+}
+
+/**
+ * @brief Creates efficient lookup tables for both the pulse and tnd outputs.
+ * 
+ * This is much faster than trying to do multiple floating point divisions during 
+ * audio generation. This was suggested by NESDev as a way to improve efficiency. 
+ */
+static void build_mixer_tables(APU *apu) {
+    // build pulse wave lookup table
+    apu->pulse_mix_table[0] = 0.0f;
+    for (int i = 1; i < 31; i++) {
+        apu->pulse_mix_table[i] = 95.52f / ((8128.0f / i) + 100.0f);
+    }
+
+    // build tnd lookup table 
+    // dmc set to 0 becuase its not implemented yet
+    apu->tnd_mix_table[0] = 0.0f;
+    for (int i = 1; i < 203; i++)
+        apu->tnd_mix_table[i] = 163.67f / ((24329.0f / i) + 100.0f);
 }
 
 /**
@@ -198,6 +205,9 @@ void apu_tick(APU *apu) {
 
 /**
  * @brief Returns generated audio for the current cycle.
+ * 
+ * Returns output and mix according to the spec listed for 
+ * the APU mixer lookup tables. 
  */
 float apu_get_output(APU *apu) {
     uint8_t pulse_sample1 = pulse_output(&apu->pulse1);
@@ -206,20 +216,14 @@ float apu_get_output(APU *apu) {
     uint8_t noise_sample  = noise_output(&apu->noise);
     uint8_t dmc_sample    = 0; // TODO: get from DMC channel
 
-    float pulse_out = 0.0f;
-    if (pulse_sample1 + pulse_sample2 > 0)
-        pulse_out = 95.88f / ((8128.0f / (pulse_sample1 + pulse_sample2)) + 100.0f);
+    // use pulse lookup table
+    float pulse_output = apu->pulse_mix_table[pulse_sample1 + pulse_sample2];
+    
+    // compute and use tnd_index in the tnd lookup table
+    int tnd_index = ((3 * tri_sample) + (2 * noise_sample) + dmc_sample);
+    float tnd_output = apu->tnd_mix_table[tnd_index];
 
-    float tnd_out = 0.0f;
-    float tnd_sum = tri_sample / 8227.0f + noise_sample / 12241.0f + dmc_sample / 22638.0f;
-    if (tnd_sum > 0)
-        tnd_out = 159.79f / ((1.0f / tnd_sum) + 100.0f);
-
-    float output = pulse_out + tnd_out;
-    if (output > 1.0f)  output = 1.0f;
-    if (output < 0.0f)  output = 0.0f;  // NES output is [0,1] before SDL conversion
-
-    return output;
+    return pulse_output + tnd_output;
 }
 
 /**
@@ -233,18 +237,7 @@ float apu_get_output(APU *apu) {
 void apu_reset(APU *apu) {
     // preserve caller's region and sample_rate
     Region region = apu->region;
-
-    // reset register mirror
-    for (int i = 0; i < 4; i++) {
-        apu->registers.pulse1[i] = 0;
-        apu->registers.pulse2[i] = 0;
-        apu->registers.triangle[i] = 0;
-        apu->registers.noise[i] = 0;
-        apu->registers.dmc[i] = 0;
-    }
-    apu->registers.status = 0;
-    apu->registers.frame_counter = 0;
-
+    
     // reset all channels to power-on defaults
     apu->pulse1   = init_pulse(1);
     apu->pulse2   = init_pulse(2);
@@ -402,7 +395,6 @@ void apu_write(APU *apu, uint16_t addr, uint8_t value) {
         case 0x400B:
             apu->triangle.timer_reload = (apu->triangle.timer_reload & 0xFF) | ((value & 0x07) << 8);
             apu->triangle.length_counter = length_table[(value >> 3) & 0x1F];
-            apu->triangle.seq_pos = 0;
             apu->triangle.linear_reload_flag = 1;
             
             if (DEBUG) 
@@ -654,6 +646,7 @@ Pulse init_pulse(int id) {
     Pulse pulse;
     
     pulse.id = id;
+    pulse.enabled = 0;
 
     pulse.duty_cycle = 0;
     pulse.length_halt = 0;
@@ -1000,6 +993,7 @@ APU *apu_create() {
     init_apu(apu, NTSC);    // default to NTSC
     return apu;
 }
+
 /** 
  * @brief Free the memory allocated to the APU
  */

@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "cpu.h"
 #include "bus.h"
@@ -13,6 +14,8 @@
 #define SCALE 2
 #define AUDIO_BUFFER_SAMPLES 2048
 #define SAMPLE_RATE 48000
+#define CPU_HZ 1789773.0
+#define MASTER_VOLUME 0.5f
 
 int main(int argc, char **argv)
 {
@@ -21,9 +24,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // --- SDL INIT VIDEO ---
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        printf("SDL_INIT_VIDEO Error: %s\n", SDL_GetError());
+    // --- SDL INIT VIDEO & AUDIO ---
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
+        printf("SDL_INIT Error: %s\n", SDL_GetError());
         return 1;
     }
 
@@ -36,8 +39,22 @@ int main(int argc, char **argv)
         PPU_HEIGHT * SCALE,
         SDL_WINDOW_SHOWN
     );
+    if (!window) {
+        printf("SDL_CreateWindow Error: %s\n", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
 
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    SDL_Renderer *renderer = SDL_CreateRenderer(
+        window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+    );
+    if (!renderer) {
+        printf("SDL_CreateRenderer Error: %s\n", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+    
     SDL_Texture *texture = SDL_CreateTexture(
         renderer,
         SDL_PIXELFORMAT_RGB888,
@@ -45,27 +62,34 @@ int main(int argc, char **argv)
         PPU_WIDTH,
         PPU_HEIGHT
     );
-
-    // --- SDL INIT AUDIO ---
-    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
-        printf("SDL_INIT_AUDIO Error: %s", SDL_GetError());
+    if (!texture) {
+        printf("SDL_CreateTexture Error: %s\n", SDL_GetError());
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
         return 1;
     }
 
-    SDL_AudioSpec spec;
-    SDL_zero(spec);
-    spec.freq     = SAMPLE_RATE;
-    spec.format   = AUDIO_F32SYS;
-    spec.channels = 1;
-    spec.samples  = AUDIO_BUFFER_SAMPLES;
-    spec.callback = NULL;
+    // --- SDL Audio Setup ---
+    SDL_AudioSpec want, have;
+    SDL_zero(want);
+    want.freq     = SAMPLE_RATE;
+    want.format   = AUDIO_F32SYS;
+    want.channels = 1;
+    want.samples  = AUDIO_BUFFER_SAMPLES;
+    want.callback = NULL;
 
     // Create audio device
-    SDL_AudioDeviceID device = SDL_OpenAudioDevice(NULL, 0, &spec, NULL, 0);
+    SDL_AudioDeviceID device = SDL_OpenAudioDevice(NULL, 0, &want, &have, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
     if (!device) {
         printf("Failed to open audio device: %s\n", SDL_GetError());
+        SDL_DestroyTexture(texture);
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
         return 1;
     }
+
     SDL_PauseAudioDevice(device, 0);
 
     // --- Emulator Init ---
@@ -92,9 +116,14 @@ int main(int argc, char **argv)
     init_opcode_table();
     cpu_reset(cpu);
 
+    // use the real sample rate so CPU_PER_SAMPLE is accurate
+    const double CPU_PER_SAMPLE = CPU_HZ / (double)have.freq;
+    double cpu_sample_frac = 0.0;
+
     float audio_buffer[AUDIO_BUFFER_SAMPLES];
-    const double CPU_PER_SAMPLE = 1789773.0 / (double)SAMPLE_RATE; // NTCS cycles per sample
-    double cpu_cycle_accum = 0.0;
+
+    // Keep ~80ms queued — prevents gaps without building up excess latency
+    const Uint32 TARGET_QUEUED_BYTES = (Uint32)(have.freq * sizeof(float) * 0.08);
 
     bool running = true;
     SDL_Event event;
@@ -106,35 +135,49 @@ int main(int argc, char **argv)
                 running = false;
         }
 
-        // --- Generate one audio buffer worth of samples ---
-        for (int i = 0; i < AUDIO_BUFFER_SAMPLES; i++) {
-            cpu_cycle_accum += CPU_PER_SAMPLE;
-
-            while (cpu_cycle_accum >= 1.0) {
-                cpu_step(cpu);
-
-                // PPU clocks 3 times per CPU tick
-                ppu_clock();
-                ppu_clock();
-                ppu_clock();
-
-                if (ppu_poll_nmi())
-                    cpu_nmi(cpu);
-
-                // Tick just the APU state
-                apu_tick(apu);
-                cpu_cycle_accum -= 1.0;
-            }
+        // Generate audio only when the queue needs topped off
+        if (SDL_GetQueuedAudioSize(device) < TARGET_QUEUED_BYTES) {
+            for (int i = 0; i < AUDIO_BUFFER_SAMPLES; i++) {
             
-            float sample = apu_get_output(apu);
-            audio_buffer[i] = (sample * 2.0f) - 1.0f;
+                cpu_sample_frac += CPU_PER_SAMPLE;
+                int cycles_to_run = (int)cpu_sample_frac;
+                cpu_sample_frac -= (double)cycles_to_run;
+
+                float accum = 0.0f;
+                int accum_count = 0;
+
+                while (cycles_to_run > 0) {
+                    // cpu_step returns the real cycle count for this instruction
+                    int inst_cycles = cpu_step(cpu);
+                    if (inst_cycles < 1) inst_cycles = 1;
+
+                    cycles_to_run -= inst_cycles;
+
+                    for (int c = 0; c < inst_cycles; c++) {
+                        // PPU runs 3 cycles per CPU cycle
+                        for (int p = 0; p < 3; p++) {
+                            ppu_clock();
+                            if (ppu_poll_nmi())
+                                cpu_nmi(cpu);
+                        }
+
+                        // APU ticks once per CPU cycle
+                        apu_tick(apu);
+
+                        accum += apu_get_output(apu);
+                        accum_count++;
+                    }
+                }
+
+                // Average to [0..1], then remap to [-1..+1] for SDL
+                float s = (accum_count > 0) ? (accum / (float)accum_count) : 0.0f;
+                audio_buffer[i] = s * MASTER_VOLUME;
+            }
+
+            // queue audio only if there is space
+            SDL_QueueAudio(device, audio_buffer, sizeof(audio_buffer));
         }
 
-        // Play audio
-        while (SDL_GetQueuedAudioSize(device) > AUDIO_BUFFER_SAMPLES * sizeof(float) * 2) {
-            SDL_Delay(1);
-        }
-        SDL_QueueAudio(device, audio_buffer, sizeof(audio_buffer));
 
         // Update texture from PPU framebuffer
         SDL_UpdateTexture(
