@@ -21,3 +21,6 @@ dist/
 # Mac / Linux junk
 .DS_Store
 Thumbs.db
+
+# Misc Folders
+roms/
