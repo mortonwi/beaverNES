@@ -7,3 +7,7 @@ roms/
 *.nes
 *_test
 *_test.exe
+
+# Misc
+build/
+.vscode/

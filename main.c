@@ -14,15 +14,10 @@
 
 #define SCALE 2
 
-#define AUDIO_BUFFER_SAMPLES 512
+#define AUDIO_BUFFER_SAMPLES 1024
 #define SAMPLE_RATE 48000
-
-// NTSC CPU clock (Hz)
 #define CPU_HZ 1789773.0f
-
-static inline float clampf(float x, float lo, float hi) {
-    return (x < lo) ? lo : (x > hi) ? hi : x;
-}
+#define MASTER_VOLUME 0.5f
 
 int main(int argc, char **argv)
 {
@@ -102,16 +97,12 @@ int main(int argc, char **argv)
     // --- Emulator Init ---
     Memory *memory = memory_create();
     APU *apu = apu_create();
+    Bus *bus = bus_create(memory, apu);
+    CPU *cpu = cpu_create(bus);
 
     // Controller 1
     Controller pad1;
     controller_init(&pad1);
-
-    // NOTE: bus_create signature must match your updated bus.h/bus.c:
-    // Bus *bus_create(Memory *mem, APU *apu, Controller *pad1);
-    Bus *bus = bus_create(memory, apu);
-
-    CPU *cpu = cpu_create(bus);
 
     Cartridge cart;
     char err[256];
@@ -144,11 +135,12 @@ int main(int argc, char **argv)
 
     float audio_buffer[AUDIO_BUFFER_SAMPLES];
 
-    bool running = true;
-    SDL_Event event;
-
     // Keep ~80ms queued to avoid huge latency
     const Uint32 TARGET_QUEUED_BYTES = (Uint32)(have.freq * (int)sizeof(float) * 0.08f);
+
+    int pending_cpu_cycles = 0;
+    bool running = true;
+    SDL_Event event;
 
     while (running)
     {
@@ -158,67 +150,64 @@ int main(int argc, char **argv)
         }
 
         // --- Controller input (keyboard → NES controller) ---
-    uint8_t buttons = 0;
+        uint8_t buttons = 0;
 
-    const Uint8 *keys = SDL_GetKeyboardState(NULL);
+        const Uint8 *keys = SDL_GetKeyboardState(NULL);
 
-    if (keys[SDL_SCANCODE_X])      buttons |= (1u << BTN_A);
-    if (keys[SDL_SCANCODE_Z])      buttons |= (1u << BTN_B);
-    if (keys[SDL_SCANCODE_RSHIFT]) buttons |= (1u << BTN_SELECT);
-    if (keys[SDL_SCANCODE_RETURN]) buttons |= (1u << BTN_START);
+        if (keys[SDL_SCANCODE_X])      buttons |= (1u << BTN_A);
+        if (keys[SDL_SCANCODE_Z])      buttons |= (1u << BTN_B);
+        if (keys[SDL_SCANCODE_RSHIFT]) buttons |= (1u << BTN_SELECT);
+        if (keys[SDL_SCANCODE_RETURN]) buttons |= (1u << BTN_START);
 
-    if (keys[SDL_SCANCODE_UP])     buttons |= (1u << BTN_UP);
-    if (keys[SDL_SCANCODE_DOWN])   buttons |= (1u << BTN_DOWN);
-    if (keys[SDL_SCANCODE_LEFT])   buttons |= (1u << BTN_LEFT);
-    if (keys[SDL_SCANCODE_RIGHT])  buttons |= (1u << BTN_RIGHT);
+        if (keys[SDL_SCANCODE_UP])     buttons |= (1u << BTN_UP);
+        if (keys[SDL_SCANCODE_DOWN])   buttons |= (1u << BTN_DOWN);
+        if (keys[SDL_SCANCODE_LEFT])   buttons |= (1u << BTN_LEFT);
+        if (keys[SDL_SCANCODE_RIGHT])  buttons |= (1u << BTN_RIGHT);
 
-    controller_set_state(&bus->pad1, buttons);
+        controller_set_state(&bus->pad1, buttons);
 
         // --- Emulation step + audio generation ---
         if (SDL_GetQueuedAudioSize(device) < TARGET_QUEUED_BYTES) {
-
             for (int i = 0; i < AUDIO_BUFFER_SAMPLES; i++) {
-
                 cpu_sample_frac += CPU_PER_SAMPLE;
                 int cycles_to_run = (int)cpu_sample_frac;
                 cpu_sample_frac -= (double)cycles_to_run;
 
-                // Average (low-pass) the APU output across the CPU cycles in this sample
-                float acc = 0.0f;
-                int acc_n = 0;
+                float accum = 0.0f;
+                int accum_count = 0;
 
                 while (cycles_to_run > 0) {
-                    int inst_cycles = cpu_step(cpu);
-                    if (inst_cycles < 1) inst_cycles = 1;
-
-                    cycles_to_run -= inst_cycles;
-
-                    // Run per-CPU-cycle timing
-                    for (int c = 0; c < inst_cycles; c++) {
-
-                        // PPU: 3 cycles per CPU cycle
-                        for (int p = 0; p < 3; p++) {
-                            ppu_clock();
-                            if (ppu_poll_nmi())
-                                cpu_nmi(cpu);
-                        }
-
-                        // APU: tick once per CPU cycle
-                        apu_tick(apu);
-
-                        // Accumulate current APU mix (0..1)
-                        acc += apu_get_output(apu);
-                        acc_n++;
+                    if (pending_cpu_cycles == 0 && bus->dmc_stall_cycles == 0) {
+                        pending_cpu_cycles = cpu_step(cpu);
+                        if (pending_cpu_cycles < 1) pending_cpu_cycles = 1;
                     }
+
+                    // PPU: 3 cycles per CPU cycle
+                    for (int p = 0; p < 3; p++) {
+                        ppu_clock();
+                        if (ppu_poll_nmi())
+                            cpu_nmi(cpu);
+                    }
+
+                    // APU: tick once per CPU cycle
+                    apu_tick(apu);
+                    bus_service_dmc_dma(bus);
+
+                    // Consume one cycle — either a real CPU cycle or a stall cycle
+                    if (bus->dmc_stall_cycles > 0) {
+                        // stall cycle: bus_service_dmc_dma already decremented it
+                    } else if (pending_cpu_cycles > 0) {
+                        pending_cpu_cycles--;
+                    }
+
+                    // Accumulate current APU mix (0..1)
+                    accum += apu_get_output(apu);
+                    accum_count++;
+                    cycles_to_run--;
                 }
 
-                float s01 = (acc_n > 0) ? (acc / (float)acc_n) : 0.0f; // 0..1
-                float s   = (s01 * 2.0f) - 1.0f;                       // -1..+1
-
-                // Conservative gain to avoid clipping harshness
-                s *= 0.35f;
-
-                audio_buffer[i] = clampf(s, -1.0f, 1.0f);
+                float s = (accum_count > 0) ? (accum / (float)accum_count) : 0.0f;
+                audio_buffer[i] = s * MASTER_VOLUME;
             }
 
             SDL_QueueAudio(device, audio_buffer, sizeof(audio_buffer));
