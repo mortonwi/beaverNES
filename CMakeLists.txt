@@ -4,9 +4,7 @@ project(beaverNES VERSION 0.0.2 LANGUAGES C)
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# --- SDL2 / SDL2_ttf ---
-# Use CONFIG packages so this works cleanly with vcpkg on Windows (MSVC),
-# and also works on Linux when the -dev packages are installed.
+
 if(WIN32)
     find_package(SDL2 CONFIG REQUIRED)
     find_package(SDL2_ttf CONFIG REQUIRED)
@@ -46,6 +44,7 @@ set(ROM_LOADER
     ${CMAKE_SOURCE_DIR}/Rom_loader/src/rom_loader.c
     ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_0.c
     ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_2.c
+    ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_1.c
 )
 
 set(CONTROLLER

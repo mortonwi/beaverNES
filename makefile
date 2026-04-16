@@ -6,7 +6,7 @@ SDL_CFLAGS  := $(shell sdl2-config --cflags)
 SDL_LDFLAGS := $(shell sdl2-config --libs)
 
 TARGET_ROM  := beavernes
-SRCS_ROM    := main.c rom_loader.c cartridge.c mapper.c mapper_0.c mapper_2.c
+SRCS_ROM    := main.c rom_loader.c cartridge.c mapper.c mapper_0.c mapper_2.c mapper_1.c
 OBJS_ROM    := $(SRCS_ROM:.c=.o)
 
 TARGET_INPUT := input_test
@@ -18,7 +18,6 @@ all: $(TARGET_ROM) $(TARGET_INPUT)
 $(TARGET_ROM): $(OBJS_ROM)
 	$(CC) $(OBJS_ROM) -o $@ $(LDFLAGS)
 
-# IMPORTANT: explicit input_test rule
 $(TARGET_INPUT): CFLAGS += $(SDL_CFLAGS)
 $(TARGET_INPUT): $(OBJS_INPUT)
 	$(CC) $(OBJS_INPUT) -o $@ $(SDL_LDFLAGS)
