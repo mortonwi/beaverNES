@@ -7,10 +7,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 if(WIN32)
     find_package(SDL2 CONFIG REQUIRED)
-    find_package(SDL2_ttf CONFIG REQUIRED)
+    # find_package(SDL2_ttf CONFIG REQUIRED)
 else()
     find_package(SDL2 REQUIRED)
-    find_package(SDL2_ttf REQUIRED)
+    # find_package(SDL2_ttf REQUIRED)
 endif()
 
 # Header include paths
@@ -20,6 +20,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/ppu/include
     ${CMAKE_SOURCE_DIR}/Rom_loader/include
     ${CMAKE_SOURCE_DIR}/controller/include
+    ${CMAKE_SOURCE_DIR}/external
 )
 
 # Sources
@@ -57,15 +58,16 @@ add_executable(beaverNES
     ${PPU}
     ${ROM_LOADER}
     ${CONTROLLER}
+    ${CMAKE_SOURCE_DIR}/external/tinyfiledialogs.c
     ${CMAKE_SOURCE_DIR}/main.c
 )
 
 # Link libraries
 if(WIN32)
-    target_link_libraries(beaverNES PRIVATE SDL2::SDL2main SDL2::SDL2 SDL2_ttf::SDL2_ttf)
+    target_link_libraries(beaverNES PRIVATE SDL2::SDL2main SDL2::SDL2)
     set_target_properties(beaverNES PROPERTIES WIN32_EXECUTABLE ON)
 else()
-    target_link_libraries(beaverNES PRIVATE SDL2::SDL2 SDL2_ttf::SDL2_ttf)
+    target_link_libraries(beaverNES PRIVATE SDL2::SDL2)
 endif()
 
 # Copy DLLs on Windows (vcpkg) so the exe runs from the build folder
@@ -73,9 +75,6 @@ if(WIN32)
     add_custom_command(TARGET beaverNES POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:SDL2::SDL2>
-            $<TARGET_FILE_DIR:beaverNES>
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:SDL2_ttf::SDL2_ttf>
             $<TARGET_FILE_DIR:beaverNES>
     )
 endif()

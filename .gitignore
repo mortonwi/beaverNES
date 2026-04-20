@@ -11,3 +11,5 @@ roms/
 # Misc
 build/
 .vscode/
+Nuklear-4.13.2/
+tinyfiledialogs-current/
