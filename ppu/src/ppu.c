@@ -429,127 +429,138 @@ void ppu_clock(void)
 {
     ppu.cycle++;
 
-    int rendering_scanline = (ppu.scanline >= 0 && ppu.scanline < 240);
-    int rendering_cycle    = (ppu.cycle >= 1 && ppu.cycle <= 256);
-    int rendering_enabled  = (ppu.ppuMask & 0x18) != 0;
+    int visible_scanline   = (ppu.scanline >= 0 && ppu.scanline < 240);
+    int prerender_scanline = (ppu.scanline == 261);
 
-    if (rendering_enabled && rendering_scanline && rendering_cycle)
+    int visible_cycle = (ppu.cycle >= 1 && ppu.cycle <= 256);
+    int fetch_cycle =
+        ((ppu.cycle >= 1 && ppu.cycle <= 256) ||
+        (ppu.cycle >= 321 && ppu.cycle <= 336));
+
+    int rendering_enabled = (ppu.ppuMask & 0x18) != 0;
+
+    if (rendering_enabled && (visible_scanline || prerender_scanline) && fetch_cycle)
     {
-        // Shift background registers every visible pixel
-        ppu.bg_shift_pattern_low  <<= 1;
-        ppu.bg_shift_pattern_high <<= 1;
-        ppu.bg_shift_attr_low     <<= 1;
-        ppu.bg_shift_attr_high    <<= 1;
+        if (visible_cycle) {
+            // Shift background registers every visible pixel
+            ppu.bg_shift_pattern_low  <<= 1;
+            ppu.bg_shift_pattern_high <<= 1;
+            ppu.bg_shift_attr_low     <<= 1;
+            ppu.bg_shift_attr_high    <<= 1;
 
-        // Tick sprite shifters each visible pixel
-        tick_sprite_shifters();
-
-                // Background pixel generation
-        uint16_t bit_mux = (uint16_t)(0x8000 >> ppu.x);
-
-        uint8_t p0 = (ppu.bg_shift_pattern_low  & bit_mux) ? 1 : 0;
-        uint8_t p1 = (ppu.bg_shift_pattern_high & bit_mux) ? 1 : 0;
-        uint8_t bg_pixel = (uint8_t)((p1 << 1) | p0);
-
-        uint8_t a0 = (ppu.bg_shift_attr_low  & bit_mux) ? 1 : 0;
-        uint8_t a1 = (ppu.bg_shift_attr_high & bit_mux) ? 1 : 0;
-        uint8_t bg_palette = (uint8_t)((a1 << 1) | a0);
-
-        // Left 8 pixel background clipping
-        if (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8) {
-            bg_pixel = 0;
+            // Tick sprite shifters each visible pixel
+            tick_sprite_shifters();
         }
 
-        // SPRITE PIXEL FETCH (highest priority sprite first)
-        uint8_t sprite_pixel = 0;
-        uint8_t sprite_palette = 0;
-        uint8_t sprite_priority = 0;
-        int sprite_zero_rendering = 0;
+        if (visible_scanline && visible_cycle)
+{
+    // Background pixel generation
+    uint16_t bit_mux = (uint16_t)(0x8000 >> ppu.x);
 
-        for (int i = 0; i < ppu.sprite_count && i < 8; i++)
+    uint8_t p0 = (ppu.bg_shift_pattern_low  & bit_mux) ? 1 : 0;
+    uint8_t p1 = (ppu.bg_shift_pattern_high & bit_mux) ? 1 : 0;
+    uint8_t bg_pixel = (uint8_t)((p1 << 1) | p0);
+
+    uint8_t a0 = (ppu.bg_shift_attr_low  & bit_mux) ? 1 : 0;
+    uint8_t a1 = (ppu.bg_shift_attr_high & bit_mux) ? 1 : 0;
+    uint8_t bg_palette = (uint8_t)((a1 << 1) | a0);
+
+    // Left 8 pixel background clipping
+    if (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8) {
+        bg_pixel = 0;
+    }
+
+    // SPRITE PIXEL FETCH (highest priority sprite first)
+    uint8_t sprite_pixel = 0;
+    uint8_t sprite_palette = 0;
+    uint8_t sprite_priority = 0;
+    int sprite_zero_rendering = 0;
+
+    for (int i = 0; i < ppu.sprite_count && i < 8; i++)
+    {
+        if (ppu.sprite_x_counter[i] == 0)
         {
-            if (ppu.sprite_x_counter[i] == 0)
+            uint8_t sp0 = (ppu.sprite_shifter_pattern_low[i] & 0x80) ? 1 : 0;
+            uint8_t sp1 = (ppu.sprite_shifter_pattern_high[i] & 0x80) ? 1 : 0;
+
+            sprite_pixel = (uint8_t)((sp1 << 1) | sp0);
+
+            if (sprite_pixel != 0)
             {
-                uint8_t sp0 = (ppu.sprite_shifter_pattern_low[i] & 0x80) ? 1 : 0;
-                uint8_t sp1 = (ppu.sprite_shifter_pattern_high[i] & 0x80) ? 1 : 0;
+                sprite_palette  = (uint8_t)((ppu.sprite_attr[i] & 0x03) + 0x04);
+                sprite_priority = (uint8_t)((ppu.sprite_attr[i] & 0x20) == 0);
 
-                sprite_pixel = (uint8_t)((sp1 << 1) | sp0);
-
-                if (sprite_pixel != 0)
-                {
-                    sprite_palette  = (uint8_t)((ppu.sprite_attr[i] & 0x03) + 0x04);
-                    sprite_priority = (uint8_t)((ppu.sprite_attr[i] & 0x20) == 0);
-
-                    if (i == 0) sprite_zero_rendering = 1;
-                    break;
-                }
+                if (i == 0) sprite_zero_rendering = 1;
+                break;
             }
         }
+    }
 
-        // Left 8 pixel sprite clipping
-        if (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8) {
-            sprite_pixel = 0;
-        }
+    // Left 8 pixel sprite clipping
+    if (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8) {
+        sprite_pixel = 0;
+    }
 
-        // PIXEL MIXING LOGIC
-        uint8_t final_pixel = 0;
-        uint8_t final_palette = 0;
+    // PIXEL MIXING LOGIC
+    uint8_t final_pixel = 0;
+    uint8_t final_palette = 0;
 
-        if (bg_pixel == 0 && sprite_pixel == 0)
-        {
-            final_pixel = 0;
-            final_palette = 0;
-        }
-        else if (bg_pixel == 0 && sprite_pixel != 0)
-        {
+    if (bg_pixel == 0 && sprite_pixel == 0)
+    {
+        final_pixel = 0;
+        final_palette = 0;
+    }
+    else if (bg_pixel == 0 && sprite_pixel != 0)
+    {
+        final_pixel = sprite_pixel;
+        final_palette = sprite_palette;
+    }
+    else if (bg_pixel != 0 && sprite_pixel == 0)
+    {
+        final_pixel = bg_pixel;
+        final_palette = bg_palette;
+    }
+    else
+    {
+        if (sprite_priority) {
             final_pixel = sprite_pixel;
             final_palette = sprite_palette;
-        }
-        else if (bg_pixel != 0 && sprite_pixel == 0)
-        {
+        } else {
             final_pixel = bg_pixel;
             final_palette = bg_palette;
         }
-        else
-        {
-            if (sprite_priority) {
-                final_pixel = sprite_pixel;
-                final_palette = sprite_palette;
-            } else {
-                final_pixel = bg_pixel;
-                final_palette = bg_palette;
-            }
 
-            // Sprite 0 hit detection
-            if (sprite_zero_rendering)
+        // Sprite 0 hit detection
+        if (sprite_zero_rendering)
+        {
+            int left_bg_clipped = (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8);
+            int left_sprite_clipped = (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8);
+
+            if (!left_bg_clipped && !left_sprite_clipped)
             {
-                int left_bg_clipped = (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8);
-                int left_sprite_clipped = (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8);
-
-                if (!left_bg_clipped && !left_sprite_clipped)
-                {
-                    ppu.ppuStatus |= 0x40;
-                }
+                ppu.ppuStatus |= 0x40;
             }
         }
+    }
 
-        // Final palette lookup and framebuffer write
-        int x = ppu.cycle - 1;
-        int y = ppu.scanline;
+    // Final palette lookup and framebuffer write
+    int x = ppu.cycle - 1;
+    int y = ppu.scanline;
 
-        if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT)
-        {
-            uint8_t palette_addr;
-            if (final_pixel == 0) {
-                palette_addr = 0;
-            } else {
-                palette_addr = (uint8_t)((final_palette << 2) | (final_pixel & 0x03));
-            }
-
-            uint8_t palette_entry = ppu.palette[palette_addr & 0x1F];
-            uint32_t rgb = nes_palette[palette_entry & 0x3F];
-            ppu.framebuffer[y * PPU_WIDTH + x] = rgb;
+    if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT)
+    {
+        uint8_t palette_addr;
+        if (final_pixel == 0) {
+            palette_addr = 0;
+        } else {
+            palette_addr = (uint8_t)((final_palette << 2) | (final_pixel & 0x03));
         }
+
+        uint8_t palette_entry = ppu.palette[palette_addr & 0x1F];
+        uint32_t rgb = nes_palette[palette_entry & 0x3F];
+        ppu.framebuffer[y * PPU_WIDTH + x] = rgb;
+    }
+}
 
         // Tile fetch pipeline every 8 cycles
         switch ((ppu.cycle - 1) % 8)
@@ -568,8 +579,7 @@ void ppu_clock(void)
 
                 // Fetch next tile ID from nametable
                 uint16_t nt_addr  = 0x2000 | (ppu.v & 0x0FFF);
-                uint16_t nt_index = mirror_nametable_addr(nt_addr);
-                ppu.next_tile_id = ppu.nametable[nt_index];
+                ppu.next_tile_id = ppu_mem_read(nt_addr);
                 break;
             }
 
@@ -577,8 +587,7 @@ void ppu_clock(void)
             {
                 // Attribute table address
                 uint16_t attr_addr  = 0x23C0 | (ppu.v & 0x0C00) | ((ppu.v >> 4) & 0x38) | ((ppu.v >> 2) & 0x07);
-                uint16_t attr_index = mirror_nametable_addr(attr_addr);
-                uint8_t attr_byte   = ppu.nametable[attr_index];
+                uint8_t attr_byte   = ppu_mem_read(attr_addr);
 
                 uint8_t shift = (uint8_t)(((ppu.v >> 4) & 4) | (ppu.v & 2));
                 ppu.next_tile_attr = (attr_byte >> shift) & 0x03;
@@ -619,7 +628,7 @@ void ppu_clock(void)
     }
 
     // Vertical increment at cycle 256 visible scanlines
-    if (rendering_enabled && rendering_scanline && ppu.cycle == 256)
+    if (rendering_enabled && visible_scanline && ppu.cycle == 256)
     {
         if ((ppu.v & 0x7000) != 0x7000)
         {
@@ -650,7 +659,7 @@ void ppu_clock(void)
     }
 
     // Horizontal scroll reload at cycle 257 visible scanlines
-    if (rendering_enabled && rendering_scanline && ppu.cycle == 257)
+    if (rendering_enabled && visible_scanline && ppu.cycle == 257)
     {
         ppu.v = (ppu.v & (uint16_t)~0x041F) | (ppu.t & 0x041F);
         evaluate_sprites();
