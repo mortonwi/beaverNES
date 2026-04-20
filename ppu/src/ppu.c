@@ -431,7 +431,7 @@ void ppu_clock(void)
 
     int rendering_scanline = (ppu.scanline >= 0 && ppu.scanline < 240);
     int rendering_cycle    = (ppu.cycle >= 1 && ppu.cycle <= 256);
-    int rendering_enabled  = (ppu.ppuMask & 0x08) != 0;
+    int rendering_enabled  = (ppu.ppuMask & 0x18) != 0;
 
     if (rendering_enabled && rendering_scanline && rendering_cycle)
     {
