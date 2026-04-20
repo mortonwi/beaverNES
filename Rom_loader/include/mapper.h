@@ -26,6 +26,9 @@ struct Mapper {
     bool (*ppu_read)(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t *out);
     bool (*ppu_write)(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t value);
 
+    //mirroring query (0 = horizontal, 1 = vertical)
+    uint8_t (*get_mirroring)(Mapper *m);
+
     void *state;
 
     void (*destroy)(Mapper *m);

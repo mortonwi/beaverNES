@@ -80,6 +80,9 @@ typedef struct Cartridge {
     uint8_t *prg;
     size_t prg_size;
 
+    uint8_t *prg_ram;
+    size_t prg_ram_size;
+
     /*
     Pointer to CHR memory (either CHR-ROM or CHR-RAM).
     This memory is used by the PPU for tile and sprite graphics.
@@ -93,6 +96,9 @@ typedef struct Cartridge {
     // Optional 512-byte trainer (present when header.has_trainer == true)
     uint8_t *trainer;
     size_t trainer_size;
+
+    uint64_t cpu_cycle;
+    
 } Cartridge;
 
 /*

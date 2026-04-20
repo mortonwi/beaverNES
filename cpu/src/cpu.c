@@ -102,6 +102,10 @@ int cpu_step(CPU *cpu) {
     uint64_t used64 = cpu->cycles - start_cycles;
     int used = (int)used64;
     if (used < 1) used = 1;
+
+    if (bus->rom) {
+        bus->rom->cpu_cycle += used;
+    }
     return used;
 }
 

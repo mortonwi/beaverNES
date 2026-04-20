@@ -26,6 +26,7 @@ To compile PPU and ROM Loader tests
 
 #include "cartridge.h"
 #include "rom_loader.h"
+#include "mapper.h" 
 
 //--------------------------------------------------------------------------//
 
@@ -105,6 +106,15 @@ static PPU ppu;
 // Global cartridge pointer used for CHR access
 static Cartridge *g_cart = NULL;
 
+
+static uint8_t get_current_mirroring(void) {
+    if (g_cart && g_cart->mapper && g_cart->mapper->get_mirroring) {
+        return g_cart->mapper->get_mirroring(g_cart->mapper);
+    }
+
+    return g_cart ? (g_cart->header.mirroring_vertical ? 1 : 0) : 0;
+}
+
 // power-up state
 void ppu_init(void) {
     memset(&ppu, 0, sizeof(PPU));
@@ -118,6 +128,8 @@ static uint16_t mirror_nametable_addr(uint16_t addr) {
     uint16_t table  = offset / 0x400;   // 0–3
     uint16_t index  = offset & 0x3FF;
 
+    uint8_t mirroring = get_current_mirroring();
+
     if (ppu.mirroring == 1) {
         // vertical: NT0,NT2 | NT1,NT3
         table &= 1;
@@ -128,6 +140,7 @@ static uint16_t mirror_nametable_addr(uint16_t addr) {
 
     return (table * 0x400) + index;
 }
+
 
 // --- Cartridge connection (added by Anjelica for ROM Loader integration)---
 void ppu_connect_cartridge(Cartridge *cart) {
@@ -431,7 +444,7 @@ void ppu_clock(void)
         // Tick sprite shifters each visible pixel
         tick_sprite_shifters();
 
-        // Background pixel generation
+                // Background pixel generation
         uint16_t bit_mux = (uint16_t)(0x8000 >> ppu.x);
 
         uint8_t p0 = (ppu.bg_shift_pattern_low  & bit_mux) ? 1 : 0;
@@ -471,6 +484,11 @@ void ppu_clock(void)
                     break;
                 }
             }
+        }
+
+        // Left 8 pixel sprite clipping
+        if (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8) {
+            sprite_pixel = 0;
         }
 
         // PIXEL MIXING LOGIC
@@ -646,7 +664,7 @@ void ppu_clock(void)
     }
 
     // VBlank & NMI Logic
-    ppu.nmi = 0;
+    //ppu.nmi = 0;
 
     // Enter VBlank: scanline 241, cycle 1
     if (ppu.scanline == 241 && ppu.cycle == 1)
@@ -661,7 +679,9 @@ void ppu_clock(void)
     // Clear VBlank: pre-render line (261), cycle 1
     if (ppu.scanline == 261 && ppu.cycle == 1)
     {
-        ppu.ppuStatus &= (uint8_t)~0x80;
+        ppu.ppuStatus &= (uint8_t)~0x80; // clear VBlank
+        ppu.ppuStatus &= (uint8_t)~0x40; // clear sprite 0 hit
+        ppu.ppuStatus &= (uint8_t)~0x20; // clear sprite overflow
     }
 
     // End of scanline / frame

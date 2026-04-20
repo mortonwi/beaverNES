@@ -19,7 +19,7 @@ static bool parse_ines_header(const uint8_t h[INES_HEADER_SIZE],
                               INesHeader *out,
                               char *err_msg,
                               size_t err_msg_len) {
-    // iNES magic: "NES" 0x1A
+    
     if (h[0] != 'N' || h[1] != 'E' || h[2] != 'S' || h[3] != 0x1A) {
         set_err(err_msg, err_msg_len, "Not a valid iNES ROM (bad magic)");
         return false;
@@ -58,6 +58,7 @@ void rom_free(Cartridge *cart) {
     }
 
     free(cart->prg);
+    free(cart->prg_ram);
     free(cart->chr);
     free(cart->trainer);
 
@@ -91,7 +92,6 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         return false;
     }
 
-    //Optional trainer (512 bytes)
     if (out_cart->header.has_trainer) {
         out_cart->trainer_size = 512;
         out_cart->trainer = (uint8_t*)malloc(out_cart->trainer_size);
@@ -154,6 +154,18 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         if (fread(out_cart->chr, 1, out_cart->chr_size, f) != out_cart->chr_size) {
             fclose(f);
             set_err(err_msg, err_msg_len, "Failed to read CHR-ROM");
+            rom_free(out_cart);
+            return false;
+        }
+    }
+
+    if (out_cart->header.mapper == 1) {
+        // Mapper 1 (MMC1) has optional PRG RAM up to 32 KB
+        out_cart->prg_ram_size = 32u * 1024u;
+        out_cart->prg_ram = (uint8_t*)calloc(1, out_cart->prg_ram_size);
+        if (!out_cart->prg_ram) {
+            fclose(f);
+            set_err(err_msg, err_msg_len, "Out of memory allocating PRG RAM");
             rom_free(out_cart);
             return false;
         }
