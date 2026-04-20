@@ -12,6 +12,12 @@ roms/
 build/
 .vscode/
 
+
 # Emulator debug logs
 *_debug.txt
 rom_info.txt
+
+# UI / external generated files
+Nuklear-4.13.2/
+tinyfiledialogs-current/
+
