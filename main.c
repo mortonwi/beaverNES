@@ -41,7 +41,7 @@ int main(int argc, char **argv)
 {
     if (argc < 2) {
         printf("Usage: %s rom.nes\n", argv[0]);
-        printf("No ROM provided. Starting with empty screen\n", argv[0]);
+        printf("No ROM provided. Starting with empty screen\n");
     }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
@@ -235,6 +235,24 @@ int main(int argc, char **argv)
             nk_menubar_begin(ctx);
             nk_layout_row_static(ctx, 20, 60, 4);   // last parameter controls number of elements in the menu
 
+            if(nk_menu_begin_label(ctx, "Options", NK_TEXT_CENTERED, nk_vec2(120, 120))) {
+                nk_layout_row_dynamic(ctx, 25, 1);
+
+                if (nk_menu_item_label(ctx, "Audio", NK_TEXT_LEFT)) {
+                    // TODO: Audio options with things like mute, or audio slider
+                }
+
+                if (nk_menu_item_label(ctx, "Video", NK_TEXT_LEFT)) {
+                    // TODO: Video options with things like CRT Lines, and other
+                }
+
+                if (nk_menu_item_label(ctx, "Quit", NK_TEXT_LEFT)) {
+                    running = false;
+                }
+
+                nk_menu_end(ctx);
+            }
+
             if (nk_menu_begin_label(ctx, "File", NK_TEXT_CENTERED, nk_vec2(120, 120))) {
                 nk_layout_row_dynamic(ctx, 25, 1);
 
@@ -277,32 +295,20 @@ int main(int argc, char **argv)
                     // TODO: resume emulation
                 }
 
-                if (nk_menu_item_label(ctx, "Quit", NK_TEXT_LEFT)) {
-                    running = false;
-                }
-
-                nk_menu_end(ctx);
-            }
-
-            if(nk_menu_begin_label(ctx, "Options", NK_TEXT_CENTERED, nk_vec2(120, 120))) {
-                nk_layout_row_dynamic(ctx, 25, 1);
-
-                if (nk_menu_item_label(ctx, "Audio", NK_TEXT_LEFT)) {
-                    // TODO: Audio options with things like mute, or audio slider
-                }
-
-                if (nk_menu_item_label(ctx, "Video", NK_TEXT_LEFT)) {
-                    // TODO: Video options with things like CRT Lines, and other
-                }
-
                 nk_menu_end(ctx);
             }
 
             if(nk_menu_begin_label(ctx, "Controls", NK_TEXT_CENTERED, nk_vec2(120, 120))) {
                 nk_layout_row_dynamic(ctx, 25, 1);
 
-                if (nk_menu_item_label(ctx, "Keybinds", NK_TEXT_LEFT)) {
-                    // TODO: Audio options with things like mute, or audio slider
+                if (nk_menu_item_label(ctx, "Keyboard", NK_TEXT_LEFT)) {
+                    // TODO: Handle changing keyboard inputs
+                    //       Will likely require pausing and resuming emulator
+                }
+
+                if (nk_menu_item_label(ctx, "Controller", NK_TEXT_LEFT)) {
+                    // TODO: Handle configuring controller inputs
+                    //       Will likely require pausing and resuming emulator
                 }
 
                 nk_menu_end(ctx);
