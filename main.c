@@ -199,6 +199,9 @@ int main(int argc, char **argv)
         PPU_HEIGHT * SCALE
     };
 
+    // To pause emulation
+    bool paused = false;
+
     // Main Emulator Loop
     while (running)
     {
@@ -206,6 +209,19 @@ int main(int argc, char **argv)
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT)
                 running = false;
+
+            // --- Pause/Resume Hotkey ---
+            if (event.type == SDL_KEYDOWN && event.key.repeat == 0) {
+                if (event.key.keysym.scancode == SDL_SCANCODE_P) {
+                    paused = !paused;
+
+                    if (paused)
+                        SDL_PauseAudioDevice(device, 1);
+                    else
+                        SDL_PauseAudioDevice(device, 0);
+                }
+            }
+
             nk_sdl_handle_event(&event);
         }
         nk_input_end(ctx);
@@ -233,7 +249,7 @@ int main(int argc, char **argv)
             NK_WINDOW_NO_SCROLLBAR))
         {
             nk_menubar_begin(ctx);
-            nk_layout_row_static(ctx, 20, 60, 4);   // last parameter controls number of elements in the menu
+            nk_layout_row_static(ctx, 20, 60, 5);   // last parameter controls number of elements in the menu
 
             if(nk_menu_begin_label(ctx, "Options", NK_TEXT_CENTERED, nk_vec2(120, 120))) {
                 nk_layout_row_dynamic(ctx, 25, 1);
@@ -269,6 +285,12 @@ int main(int argc, char **argv)
                         0                   // allow multiple selection
                     );
 
+                    // if user cancelled — do nothing
+                    if (!ROMpath) {
+                        // Keep paused state exactly as it was and just return to the menu
+                        goto skip_rom_load;
+                    }
+
                     // free previously loaded rom
                     if (rom_loaded) rom_free(&cart);
 
@@ -292,6 +314,7 @@ int main(int argc, char **argv)
                         );
                     }
 
+                    skip_rom_load: ;
                     // TODO: resume emulation
                 }
 
@@ -324,12 +347,22 @@ int main(int argc, char **argv)
                 nk_menu_end(ctx);
             }
 
+            // Pause/Resume standalone button
+            if (nk_button_label(ctx, paused ? "Resume" : "Pause")) {
+                paused = !paused;
+
+                if (paused)
+                    SDL_PauseAudioDevice(device, 1);
+                else
+                    SDL_PauseAudioDevice(device, 0);
+            }
+
             nk_menubar_end(ctx);
         }
         nk_end(ctx);
 
         // --- Emulation step + audio generation ---
-        if (rom_loaded) {
+        if (rom_loaded && !paused) {
             if (SDL_GetQueuedAudioSize(device) < TARGET_QUEUED_BYTES) {
                 for (int i = 0; i < AUDIO_BUFFER_SAMPLES; i++) {
                     cpu_sample_frac += CPU_PER_SAMPLE;
