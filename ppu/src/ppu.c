@@ -130,7 +130,8 @@ static uint16_t mirror_nametable_addr(uint16_t addr) {
 
     uint8_t mirroring = get_current_mirroring();
 
-    if (ppu.mirroring == 1) {
+    // was ppu.mirroring
+    if (mirroring == 1) {
         // vertical: NT0,NT2 | NT1,NT3
         table &= 1;
     } else {
@@ -222,7 +223,7 @@ static void evaluate_sprites(void)
 
         (void)tile; (void)attr; (void)x;
 
-        int row = ppu.scanline - y;
+        int row = (ppu.scanline + 1) - y;
 
         if (row >= 0 && row < sprite_height)
         {
@@ -701,6 +702,14 @@ void ppu_clock(void)
 
         if (ppu.scanline >= 262)
         {
+            ppu.scanline = 0;
+            ppu.frame++;
+        }
+
+        // Added this odd-frame skip:
+        if (rendering_enabled && (ppu.frame & 1) &&
+            ppu.scanline == 261 && ppu.cycle == 340) {
+            ppu.cycle = 0;
             ppu.scanline = 0;
             ppu.frame++;
         }

@@ -37,6 +37,23 @@
 #define CPU_HZ 1789773.0f
 #define MASTER_VOLUME 0.5f
 
+/*  
+ * Emulator Utility Functions
+ */
+
+// helper to find controller inputs
+// Credit goes to rubenwardy 
+// https://blog.rubenwardy.com/2023/01/24/using_sdl_gamecontroller/
+SDL_GameController *findController() {
+    for (int i = 0; i < SDL_NumJoysticks(); i++) {
+        if (SDL_IsGameController(i)) {
+            return SDL_GameControllerOpen(i);
+        }
+    }
+
+    return NULL;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2) {
@@ -44,7 +61,7 @@ int main(int argc, char **argv)
         printf("No ROM provided. Starting with empty screen\n");
     }
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         printf("SDL_Init Error: %s\n", SDL_GetError());
         return 1;
     }
@@ -224,6 +241,18 @@ int main(int argc, char **argv)
         if (keys[SDL_SCANCODE_DOWN])   buttons |= (1u << BTN_DOWN);
         if (keys[SDL_SCANCODE_LEFT])   buttons |= (1u << BTN_LEFT);
         if (keys[SDL_SCANCODE_RIGHT])  buttons |= (1u << BTN_RIGHT);
+
+        SDL_GameController *controller = findController();
+
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_A))           buttons |= (1u << BTN_A);
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_B))           buttons |= (1u << BTN_B);
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_BACK))        buttons |= (1u << BTN_SELECT);
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_START))       buttons |= (1u << BTN_START);
+
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP))     buttons |= (1u << BTN_UP);
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN))   buttons |= (1u << BTN_DOWN);
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT))   buttons |= (1u << BTN_LEFT);
+        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT))  buttons |= (1u << BTN_RIGHT);
 
         controller_set_state(&bus->pad1, buttons);
 
@@ -405,8 +434,3 @@ int main(int argc, char **argv)
     apu_free(apu);
     return 0;
 }
-
-/*  
- * Emulator Utility Functions
- * 
- */
