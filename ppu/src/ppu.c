@@ -121,7 +121,7 @@ typedef struct {
 
 static PPU ppu;
 
-//-------Cartridge pointer the PPU uses for CHR accesses (added by Anjelica for ROM Loader integration)
+//Cartridge pointer the PPU uses for CHR accesses (added by Anjelica for ROM Loader integration)
 // Global cartridge pointer used for CHR access
 static Cartridge *g_cart = NULL;
 
@@ -147,25 +147,28 @@ static uint16_t mirror_nametable_addr(uint16_t addr) {
     uint16_t table  = offset / 0x400;   // 0–3
     uint16_t index  = offset & 0x3FF;
 
+
+    /*******                                 FIX FOR TETRIS                                      *********/
+    // Get current nametable mirroring mode from the active mapper/cartridge
     uint8_t mirroring = get_current_mirroring();
 
 if (mirroring == 1) {
-    // vertical
+    // Vertical mirroring
     table &= 1;
 } else if (mirroring == 0) {
-    // horizontal
+    // horizontal mirroring
     table >>= 1;
 } else if (mirroring == 2) {
-    // one-screen lower
+    // one-screen lower mirroring
     table = 0;
 } else if (mirroring == 3) {
-    // one-screen upper
+    // one-screen upper mirroring
     table = 1;
 }
 
     return (table * 0x400) + index;
 }
-
+//-------------------------------------------------------------------------------//
 
 // --- Cartridge connection (added by Anjelica for ROM Loader integration)---
 void ppu_connect_cartridge(Cartridge *cart) {

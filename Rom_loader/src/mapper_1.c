@@ -219,7 +219,7 @@ Mapper *mapper1_create(void) {
     m->cpu_write = mapper1_cpu_write;
     m->ppu_read  = mapper1_ppu_read;
     m->ppu_write = mapper1_ppu_write;
-    m->get_mirroring = mapper1_get_mirroring;
+    m->get_mirroring = mapper1_get_mirroring;  // Added for PPU nametable mirroring fix in Tetris
     m->state = state;
     m->destroy = mapper1_destroy;
 
