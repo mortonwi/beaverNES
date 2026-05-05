@@ -11,3 +11,7 @@ roms/
 # Misc
 build/
 .vscode/
+
+# Emulator debug logs
+*_debug.txt
+rom_info.txt

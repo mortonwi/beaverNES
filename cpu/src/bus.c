@@ -1,5 +1,6 @@
 #include "bus.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 /* notes from elvis-dev-----------------------------------------
 changed paths to match new file structure
@@ -11,6 +12,25 @@ the cart_* access functions needed by the bus.
 #include "cartridge.h"
 #include "apu.h"
 #include "controller.h"
+
+#include <stdio.h>
+#include <stdarg.h>
+
+static FILE *bus_log = NULL;
+
+static void bus_debug_log(const char *fmt, ...) {
+    if (!bus_log) {
+        bus_log = fopen("bus_debug.txt", "w");
+        if (!bus_log) return;
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(bus_log, fmt, args);
+    va_end(args);
+
+    fflush(bus_log);
+}
 
 // Resource for CPU memory map:
 // https://www.nesdev.org/wiki/CPU_memory_map
@@ -81,11 +101,17 @@ void bus_write(Bus *bus, uint16_t addr, uint8_t value) {
     }
 
     // $2000–$3FFF: PPU registers (mirrored every 8 bytes)
-    if (addr < 0x4000) {
+    // $2000–$3FFF: PPU registers (mirrored every 8 bytes)
+    if (addr >= 0x2000 && addr < 0x4000) {
         uint16_t reg = 0x2000 | (addr & 0x0007);
-        ppu_write(reg, value);
-        return;
-    }
+
+   if (reg == 0x2001) {
+    bus_debug_log("BUS WRITE PPUMASK raw=%04X reg=%04X value=%02X\n", addr, reg, value);
+}
+
+    ppu_write(reg, value);
+    return;
+}
 
     // $4000–$4013: APU
     if (addr >= 0x4000 && addr <= 0x4013) {

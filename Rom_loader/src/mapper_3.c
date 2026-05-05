@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 typedef struct {
     uint8_t chr_bank;
@@ -41,6 +42,15 @@ static bool mapper3_cpu_write(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t
     if (!state) return false;
 
     state->chr_bank = value;
+
+    // TEMP DEBUG
+    FILE *f = fopen("mapper3_debug.txt", "a");
+    if (f) {
+        fprintf(f, "Mapper3 CHR bank write addr=%04X value=%02X selected=%u\n",
+                addr, value, state->chr_bank);
+        fclose(f);
+    }
+
     return true;
 }
 
@@ -116,7 +126,7 @@ Mapper *mapper3_create(void) {
     m->cpu_write = mapper3_cpu_write;
     m->ppu_read = mapper3_ppu_read;
     m->ppu_write = mapper3_ppu_write;
-    m->get_mirroring = mapper3_get_mirroring;
+    m->get_mirroring = NULL;
     m->state = state;
     m->destroy = mapper3_destroy;
 

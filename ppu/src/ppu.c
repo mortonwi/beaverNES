@@ -17,6 +17,7 @@ To compile PPU and ROM Loader tests
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include "ppu.h"
 
@@ -28,6 +29,23 @@ To compile PPU and ROM Loader tests
 #include "rom_loader.h"
 #include "mapper.h" 
 
+
+
+static FILE *ppu_log = NULL;
+
+static void ppu_debug_log(const char *fmt, ...) {
+    if (!ppu_log) {
+        ppu_log = fopen("ppu_debug.txt", "w");
+        if (!ppu_log) return;
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(ppu_log, fmt, args);
+    va_end(args);
+
+    fflush(ppu_log);
+}
 //--------------------------------------------------------------------------//
 
 // NES palette: 64 colors (6-bit indices) mapped to RGB values
@@ -87,6 +105,7 @@ typedef struct {
     uint8_t next_tile_msb;
 
     uint32_t framebuffer[PPU_WIDTH * PPU_HEIGHT];
+    uint32_t display_framebuffer[PPU_WIDTH * PPU_HEIGHT];
 
     // OAM secondary buffer for sprite evaluation
     uint8_t secondary_oam[32];
@@ -130,13 +149,19 @@ static uint16_t mirror_nametable_addr(uint16_t addr) {
 
     uint8_t mirroring = get_current_mirroring();
 
-    if (ppu.mirroring == 1) {
-        // vertical: NT0,NT2 | NT1,NT3
-        table &= 1;
-    } else {
-        // horizontal: NT0,NT1 | NT2,NT3
-        table >>= 1;
-    }
+if (mirroring == 1) {
+    // vertical
+    table &= 1;
+} else if (mirroring == 0) {
+    // horizontal
+    table >>= 1;
+} else if (mirroring == 2) {
+    // one-screen lower
+    table = 0;
+} else if (mirroring == 3) {
+    // one-screen upper
+    table = 1;
+}
 
     return (table * 0x400) + index;
 }
@@ -194,13 +219,20 @@ static void ppu_mem_write(uint16_t addr, uint8_t value) {
     if (addr < 0x3F00) {
         uint16_t nt = mirror_nametable_addr(addr);
         ppu.nametable[nt] = value;
+
+        // TEMP DEBUG
+        printf("NT WRITE addr=%04X mirrored=%04X value=%02X\n", addr, nt, value);
+
         return;
-    }
+}
 
     // $3F00-$3FFF: palette
     uint16_t pal_addr = addr & 0x1F;
     if ((pal_addr & 0x13) == 0x10) pal_addr &= (uint16_t)~0x10;
     ppu.palette[pal_addr] = value;
+
+    // TEMP DEBUG
+    ppu_debug_log("PALETTE WRITE addr=%04X pal=%02X value=%02X\n", addr, pal_addr, value);
 }
 
 // Evaluate sprites for current scanline (max 8)
@@ -345,6 +377,7 @@ void ppu_write(uint16_t addr, uint8_t value) {
 
         case 0x2001: // PPUMASK
             ppu.ppuMask = value;
+            ppu_debug_log("PPUMASK write = %02X\n", value);
             break;
 
         case 0x2003: // OAMADDR
@@ -371,25 +404,31 @@ void ppu_write(uint16_t addr, uint8_t value) {
             }
             break;
 
-        case 0x2006: // PPUADDR
+       case 0x2006: // PPUADDR
             if (!ppu.w) {
-                // First write: high byte (bits 8–13)
                 ppu.t = (ppu.t & 0x00FF) | ((uint16_t)(value & 0x3F) << 8);
                 ppu.w = 1;
             } else {
-                // Second write: low byte, then copy t -> v
                 ppu.t = (ppu.t & 0xFF00) | value;
                 ppu.v = ppu.t;
                 ppu.w = 0;
-            }
-            break;
+
+        // TEMP DEBUG
+        ppu_debug_log("PPUADDR set v=%04X\n", ppu.v);
+    }
+    break;
 
         case 0x2007: { // PPUDATA
             uint16_t a = ppu.v & 0x3FFF;
+
+            if (a >= 0x2000 && a < 0x3F00) {
+            //ppu_debug_log("PPUDATA WRITE v=%04X value=%02X\n", a, value);
+    }
+
             ppu_mem_write(a, value);
             ppu.v += (ppu.ppuCtrl & 0x04) ? 32 : 1;
             break;
-        }
+}
     }
 }
 
@@ -398,11 +437,11 @@ uint8_t ppu_read(uint16_t addr) {
 
     switch (addr & 0x2007) {
         case 0x2002: // PPUSTATUS
-            result = ppu.ppuStatus;
-            ppu.ppuStatus &= (uint8_t)~0x80; // clear VBlank
-            ppu.w = 0;
-            ppu.nmi = 0; // Clear NMI request on status read
-            break;
+        result = ppu.ppuStatus;
+        ppu.ppuStatus &= (uint8_t)~0x80; // clear VBlank
+        ppu.w = 0;
+
+         break;
 
         case 0x2007: { // PPUDATA
             uint16_t a = ppu.v & 0x3FFF;
@@ -440,192 +479,221 @@ void ppu_clock(void)
     int rendering_enabled = (ppu.ppuMask & 0x18) != 0;
 
     if (rendering_enabled && (visible_scanline || prerender_scanline) && fetch_cycle)
+{
+    if (visible_scanline && visible_cycle)
     {
-        if (visible_cycle) {
-            // Shift background registers every visible pixel
-            ppu.bg_shift_pattern_low  <<= 1;
-            ppu.bg_shift_pattern_high <<= 1;
-            ppu.bg_shift_attr_low     <<= 1;
-            ppu.bg_shift_attr_high    <<= 1;
+        // Background pixel generation
+        uint16_t bit_mux = (uint16_t)(0x8000 >> ppu.x);
 
-            // Tick sprite shifters each visible pixel
-            tick_sprite_shifters();
+        uint8_t p0 = (ppu.bg_shift_pattern_low  & bit_mux) ? 1 : 0;
+        uint8_t p1 = (ppu.bg_shift_pattern_high & bit_mux) ? 1 : 0;
+        uint8_t bg_pixel = (uint8_t)((p1 << 1) | p0);
+
+        uint8_t a0 = (ppu.bg_shift_attr_low  & bit_mux) ? 1 : 0;
+        uint8_t a1 = (ppu.bg_shift_attr_high & bit_mux) ? 1 : 0;
+        uint8_t bg_palette = (uint8_t)((a1 << 1) | a0);
+
+        // TEMP DEBUG
+        if (ppu.cycle == 50 && ppu.scanline == 50) {
+            ppu_debug_log(
+                "BG sample: tile=%02X lsb=%02X msb=%02X bg_pixel=%u palette=%u mask=%02X ctrl=%02X\n",
+                ppu.next_tile_id,
+                ppu.next_tile_lsb,
+                ppu.next_tile_msb,
+                bg_pixel,
+                bg_palette,
+                ppu.ppuMask,
+                ppu.ppuCtrl
+            );
         }
 
-        if (visible_scanline && visible_cycle)
-{
-    // Background pixel generation
-    uint16_t bit_mux = (uint16_t)(0x8000 >> ppu.x);
+        // Left 8 pixel background clipping
+        if (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8) {
+            bg_pixel = 0;
+        }
 
-    uint8_t p0 = (ppu.bg_shift_pattern_low  & bit_mux) ? 1 : 0;
-    uint8_t p1 = (ppu.bg_shift_pattern_high & bit_mux) ? 1 : 0;
-    uint8_t bg_pixel = (uint8_t)((p1 << 1) | p0);
+        // SPRITE PIXEL FETCH
+        uint8_t sprite_pixel = 0;
+        uint8_t sprite_palette = 0;
+        uint8_t sprite_priority = 0;
+        int sprite_zero_rendering = 0;
 
-    uint8_t a0 = (ppu.bg_shift_attr_low  & bit_mux) ? 1 : 0;
-    uint8_t a1 = (ppu.bg_shift_attr_high & bit_mux) ? 1 : 0;
-    uint8_t bg_palette = (uint8_t)((a1 << 1) | a0);
-
-    // Left 8 pixel background clipping
-    if (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8) {
-        bg_pixel = 0;
-    }
-
-    // SPRITE PIXEL FETCH (highest priority sprite first)
-    uint8_t sprite_pixel = 0;
-    uint8_t sprite_palette = 0;
-    uint8_t sprite_priority = 0;
-    int sprite_zero_rendering = 0;
-
-    for (int i = 0; i < ppu.sprite_count && i < 8; i++)
-    {
-        if (ppu.sprite_x_counter[i] == 0)
+        for (int i = 0; i < ppu.sprite_count && i < 8; i++)
         {
-            uint8_t sp0 = (ppu.sprite_shifter_pattern_low[i] & 0x80) ? 1 : 0;
-            uint8_t sp1 = (ppu.sprite_shifter_pattern_high[i] & 0x80) ? 1 : 0;
-
-            sprite_pixel = (uint8_t)((sp1 << 1) | sp0);
-
-            if (sprite_pixel != 0)
+            if (ppu.sprite_x_counter[i] == 0)
             {
-                sprite_palette  = (uint8_t)((ppu.sprite_attr[i] & 0x03) + 0x04);
-                sprite_priority = (uint8_t)((ppu.sprite_attr[i] & 0x20) == 0);
+                uint8_t sp0 = (ppu.sprite_shifter_pattern_low[i] & 0x80) ? 1 : 0;
+                uint8_t sp1 = (ppu.sprite_shifter_pattern_high[i] & 0x80) ? 1 : 0;
 
-                if (i == 0) sprite_zero_rendering = 1;
-                break;
+                sprite_pixel = (uint8_t)((sp1 << 1) | sp0);
+
+                if (sprite_pixel != 0)
+                {
+                    sprite_palette  = (uint8_t)((ppu.sprite_attr[i] & 0x03) + 0x04);
+                    sprite_priority = (uint8_t)((ppu.sprite_attr[i] & 0x20) == 0);
+
+                    if (i == 0) sprite_zero_rendering = 1;
+                    break;
+                }
             }
         }
-    }
 
-    // Left 8 pixel sprite clipping
-    if (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8) {
-        sprite_pixel = 0;
-    }
+        // Left 8 pixel sprite clipping
+        if (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8) {
+            sprite_pixel = 0;
+        }
 
-    // PIXEL MIXING LOGIC
-    uint8_t final_pixel = 0;
-    uint8_t final_palette = 0;
+        // PIXEL MIXING LOGIC
+        uint8_t final_pixel = 0;
+        uint8_t final_palette = 0;
 
-    if (bg_pixel == 0 && sprite_pixel == 0)
-    {
-        final_pixel = 0;
-        final_palette = 0;
-    }
-    else if (bg_pixel == 0 && sprite_pixel != 0)
-    {
-        final_pixel = sprite_pixel;
-        final_palette = sprite_palette;
-    }
-    else if (bg_pixel != 0 && sprite_pixel == 0)
-    {
-        final_pixel = bg_pixel;
-        final_palette = bg_palette;
-    }
-    else
-    {
-        if (sprite_priority) {
+        if (bg_pixel == 0 && sprite_pixel == 0)
+        {
+            final_pixel = 0;
+            final_palette = 0;
+        }
+        else if (bg_pixel == 0 && sprite_pixel != 0)
+        {
             final_pixel = sprite_pixel;
             final_palette = sprite_palette;
-        } else {
+        }
+        else if (bg_pixel != 0 && sprite_pixel == 0)
+        {
             final_pixel = bg_pixel;
             final_palette = bg_palette;
         }
-
-        // Sprite 0 hit detection
-        if (sprite_zero_rendering)
+        else
         {
-            int left_bg_clipped = (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8);
-            int left_sprite_clipped = (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8);
-
-            if (!left_bg_clipped && !left_sprite_clipped)
-            {
-                ppu.ppuStatus |= 0x40;
+            if (sprite_priority) {
+                final_pixel = sprite_pixel;
+                final_palette = sprite_palette;
+            } else {
+                final_pixel = bg_pixel;
+                final_palette = bg_palette;
             }
+
+            // Sprite 0 hit detection
+            if (sprite_zero_rendering)
+            {
+                int left_bg_clipped = (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8);
+                int left_sprite_clipped = (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8);
+
+                if (!left_bg_clipped && !left_sprite_clipped)
+                {
+                    ppu.ppuStatus |= 0x40;
+                }
+            }
+        }
+
+        // Final palette lookup and framebuffer write
+        int x = ppu.cycle - 1;
+        int y = ppu.scanline;
+
+        if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT)
+        {
+            uint8_t palette_addr;
+
+            if (final_pixel == 0) {
+                palette_addr = 0;
+            } else {
+                palette_addr = (uint8_t)((final_palette << 2) | (final_pixel & 0x03));
+            }
+
+            uint8_t palette_entry = ppu.palette[palette_addr & 0x1F];
+            uint32_t rgb = nes_palette[palette_entry & 0x3F];
+
+            ppu.framebuffer[y * PPU_WIDTH + x] = rgb;
         }
     }
 
-    // Final palette lookup and framebuffer write
-    int x = ppu.cycle - 1;
-    int y = ppu.scanline;
-
-    if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT)
+    // Shift background registers AFTER drawing the current pixel
+    if (fetch_cycle)
     {
-        uint8_t palette_addr;
-        if (final_pixel == 0) {
-            palette_addr = 0;
-        } else {
-            palette_addr = (uint8_t)((final_palette << 2) | (final_pixel & 0x03));
+        ppu.bg_shift_pattern_low  <<= 1;
+        ppu.bg_shift_pattern_high <<= 1;
+        ppu.bg_shift_attr_low     <<= 1;
+        ppu.bg_shift_attr_high    <<= 1;
+
+        if (visible_cycle) {
+            tick_sprite_shifters();
+        }
+    }
+
+    // Tile fetch pipeline every 8 cycles
+    switch ((ppu.cycle - 1) % 8)
+    {
+        case 0:
+        {
+            // Load shift registers
+            ppu.bg_shift_pattern_low  = (ppu.bg_shift_pattern_low  & 0xFF00) | ppu.next_tile_lsb;
+            ppu.bg_shift_pattern_high = (ppu.bg_shift_pattern_high & 0xFF00) | ppu.next_tile_msb;
+
+            // Load attribute bits into shift registers
+            uint8_t attr = ppu.next_tile_attr;
+
+            ppu.bg_shift_attr_low  = (ppu.bg_shift_attr_low  & 0xFF00) | ((attr & 0x01) ? 0xFF : 0x00);
+            ppu.bg_shift_attr_high = (ppu.bg_shift_attr_high & 0xFF00) | ((attr & 0x02) ? 0xFF : 0x00);
+
+            // Fetch next tile ID from nametable
+            uint16_t nt_addr = 0x2000 | (ppu.v & 0x0FFF);
+            ppu.next_tile_id = ppu_mem_read(nt_addr);
+            break;
         }
 
-        uint8_t palette_entry = ppu.palette[palette_addr & 0x1F];
-        uint32_t rgb = nes_palette[palette_entry & 0x3F];
-        ppu.framebuffer[y * PPU_WIDTH + x] = rgb;
+        case 2:
+        {
+            // Attribute table address
+            uint16_t attr_addr =
+                0x23C0 |
+                (ppu.v & 0x0C00) |
+                ((ppu.v >> 4) & 0x38) |
+                ((ppu.v >> 2) & 0x07);
+
+            uint8_t attr_byte = ppu_mem_read(attr_addr);
+
+            uint8_t shift = (uint8_t)(((ppu.v >> 4) & 4) | (ppu.v & 2));
+            ppu.next_tile_attr = (attr_byte >> shift) & 0x03;
+            break;
+        }
+
+        case 4:
+        {
+            uint16_t pattern_addr =
+                (uint16_t)(((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)
+                + (ppu.next_tile_id * 16)
+                + ((ppu.v >> 12) & 0x7));
+
+            ppu.next_tile_lsb = ppu_mem_read(pattern_addr);
+            break;
+        }
+
+        case 6:
+        {
+            uint16_t pattern_addr =
+                (uint16_t)(((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)
+                + (ppu.next_tile_id * 16)
+                + ((ppu.v >> 12) & 0x7));
+
+            ppu.next_tile_msb = ppu_mem_read((uint16_t)(pattern_addr + 8));
+            break;
+        }
+
+        case 7:
+        {
+            // coarse X increment
+            if ((ppu.v & 0x001F) == 31)
+            {
+                ppu.v &= (uint16_t)~0x001F;
+                ppu.v ^= 0x0400;
+            }
+            else
+            {
+                ppu.v += 1;
+            }
+            break;
+        }
     }
 }
-
-        // Tile fetch pipeline every 8 cycles
-        switch ((ppu.cycle - 1) % 8)
-        {
-            case 0:
-            {
-                // Load shift registers
-                ppu.bg_shift_pattern_low  = (ppu.bg_shift_pattern_low  & 0xFF00) | ppu.next_tile_lsb;
-                ppu.bg_shift_pattern_high = (ppu.bg_shift_pattern_high & 0xFF00) | ppu.next_tile_msb;
-
-                // Load attribute bits into shift registers
-                uint8_t attr = ppu.next_tile_attr;
-
-                ppu.bg_shift_attr_low  = (ppu.bg_shift_attr_low  & 0xFF00) | ((attr & 0x01) ? 0xFF : 0x00);
-                ppu.bg_shift_attr_high = (ppu.bg_shift_attr_high & 0xFF00) | ((attr & 0x02) ? 0xFF : 0x00);
-
-                // Fetch next tile ID from nametable
-                uint16_t nt_addr  = 0x2000 | (ppu.v & 0x0FFF);
-                ppu.next_tile_id = ppu_mem_read(nt_addr);
-                break;
-            }
-
-            case 2:
-            {
-                // Attribute table address
-                uint16_t attr_addr  = 0x23C0 | (ppu.v & 0x0C00) | ((ppu.v >> 4) & 0x38) | ((ppu.v >> 2) & 0x07);
-                uint8_t attr_byte   = ppu_mem_read(attr_addr);
-
-                uint8_t shift = (uint8_t)(((ppu.v >> 4) & 4) | (ppu.v & 2));
-                ppu.next_tile_attr = (attr_byte >> shift) & 0x03;
-                break;
-            }
-
-            case 4:
-            {
-                uint16_t pattern_addr =
-                    (uint16_t)(((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000) + (ppu.next_tile_id * 16) + ((ppu.v >> 12) & 0x7));
-                ppu.next_tile_lsb = ppu_mem_read(pattern_addr);
-                break;
-            }
-
-            case 6:
-            {
-                uint16_t pattern_addr =
-                    (uint16_t)(((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000) + (ppu.next_tile_id * 16) + ((ppu.v >> 12) & 0x7));
-                ppu.next_tile_msb = ppu_mem_read((uint16_t)(pattern_addr + 8));
-                break;
-            }
-
-            case 7:
-            {
-                // coarse X increment
-                if ((ppu.v & 0x001F) == 31)
-                {
-                    ppu.v &= (uint16_t)~0x001F;
-                    ppu.v ^= 0x0400;
-                }
-                else
-                {
-                    ppu.v += 1;
-                }
-                break;
-            }
-        }
-    }
 
     // Vertical increment at cycle 256 visible scanlines
     if (rendering_enabled && visible_scanline && ppu.cycle == 256)
@@ -659,12 +727,15 @@ void ppu_clock(void)
     }
 
     // Horizontal scroll reload at cycle 257 visible scanlines
-    if (rendering_enabled && visible_scanline && ppu.cycle == 257)
-    {
-        ppu.v = (ppu.v & (uint16_t)~0x041F) | (ppu.t & 0x041F);
+    if (rendering_enabled && (visible_scanline || prerender_scanline) && ppu.cycle == 257)
+{
+    ppu.v = (ppu.v & (uint16_t)~0x041F) | (ppu.t & 0x041F);
+
+    if (visible_scanline) {
         evaluate_sprites();
         load_sprite_shifters(ppu.scanline + 1);
     }
+}
 
     // Vertical scroll reload
     if (rendering_enabled && ppu.scanline == 261 && ppu.cycle >= 280 && ppu.cycle <= 304)
@@ -703,12 +774,14 @@ void ppu_clock(void)
         {
             ppu.scanline = 0;
             ppu.frame++;
+
+            memcpy(ppu.display_framebuffer, ppu.framebuffer, sizeof(ppu.framebuffer));
         }
     }
 }
 
 uint32_t *ppu_get_framebuffer(void) {
-    return ppu.framebuffer;
+    return ppu.display_framebuffer;
 }
 
 uint8_t ppu_poll_nmi(void) {

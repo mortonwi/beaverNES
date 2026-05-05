@@ -175,11 +175,23 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
 
     //Create mapper after ROM data is loaded
     out_cart->mapper = mapper_create(out_cart->header.mapper);
-    if (!out_cart->mapper) {
-        set_err(err_msg, err_msg_len, "Unsupported mapper (no implementation)");
-        rom_free(out_cart);
-        return false;
-    }
+if (!out_cart->mapper) {
+    set_err(err_msg, err_msg_len, "Unsupported mapper (no implementation)");
+    rom_free(out_cart);
+    return false;
+}
 
-    return true;
+// TEMP DEBUG: write ROM info to file
+FILE *info = fopen("rom_info.txt", "w");
+if (info) {
+    fprintf(info, "Mapper=%u | PRG=%u | CHR=%u | CHR_RAM=%d | VerticalMirroring=%d\n",
+    out_cart->header.mapper,
+    (unsigned)out_cart->prg_size,
+    (unsigned)out_cart->chr_size,
+    (int)out_cart->chr_is_ram,
+    (int)out_cart->header.mirroring_vertical);
+    fclose(info);
+}
+
+return true;
 }
