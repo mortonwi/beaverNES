@@ -178,8 +178,6 @@ void ppu_connect_cartridge(Cartridge *cart) {
         // 0 = horizontal, 1 = vertical (matches this PPU's convention)
         ppu.mirroring = cart->header.mirroring_vertical ? 1 : 0;
 
-        // Four-screen mirroring not implemented here; ignore for now
-        // if (cart->header.four_screen) { ... }
     }
 }
 
