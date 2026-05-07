@@ -385,7 +385,7 @@ int main(int argc, char **argv)
         if (show_av_settings) {
             if (nk_begin(ctx, "Audio/Video Settings",
                 nk_rect(200, 100, 400, 300),
-                NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE))
+                NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
             {
                 nk_layout_row_begin(ctx, NK_DYNAMIC, 25, 2);
                 {
@@ -415,7 +415,7 @@ int main(int argc, char **argv)
         if (show_control_settings) {
             if (nk_begin(ctx, "Control Settings",
                 nk_rect(200, 100, 400, 300),
-                NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE))
+                NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
             {
                 nk_layout_row_dynamic(ctx, 30, 1);
                 if (nk_button_label(ctx, "Close")) {
