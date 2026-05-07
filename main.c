@@ -53,6 +53,31 @@ SDL_GameController *findController() {
     return NULL;
 }
 
+// Prevent duplicate key bindings
+static bool key_already_used(
+    SDL_Scancode pressed,
+    int current_button,
+    SDL_Scancode key_A,
+    SDL_Scancode key_B,
+    SDL_Scancode key_SELECT,
+    SDL_Scancode key_START,
+    SDL_Scancode key_UP,
+    SDL_Scancode key_DOWN,
+    SDL_Scancode key_LEFT,
+    SDL_Scancode key_RIGHT
+) {
+    if (current_button != BTN_A && pressed == key_A) return true;
+    if (current_button != BTN_B && pressed == key_B) return true;
+    if (current_button != BTN_SELECT && pressed == key_SELECT) return true;
+    if (current_button != BTN_START && pressed == key_START) return true;
+    if (current_button != BTN_UP && pressed == key_UP) return true;
+    if (current_button != BTN_DOWN && pressed == key_DOWN) return true;
+    if (current_button != BTN_LEFT && pressed == key_LEFT) return true;
+    if (current_button != BTN_RIGHT && pressed == key_RIGHT) return true;
+
+    return false;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2) {
@@ -225,6 +250,8 @@ int main(int argc, char **argv)
     bool show_control_settings = false;
     int waiting_for_key = -1;
 
+    char control_error[128] = "";
+
     SDL_Scancode key_A = SDL_SCANCODE_X;
     SDL_Scancode key_B = SDL_SCANCODE_Z;
     SDL_Scancode key_SELECT = SDL_SCANCODE_RSHIFT;
@@ -245,21 +272,38 @@ int main(int argc, char **argv)
             // --- Pause/Resume Hotkey ---
             if (event.type == SDL_KEYDOWN && event.key.repeat == 0) {
 
-                if (waiting_for_key != -1) {
-                SDL_Scancode pressed = event.key.keysym.scancode;
+            if (waiting_for_key != -1) {
+                    SDL_Scancode pressed = event.key.keysym.scancode;
 
-                if (waiting_for_key == BTN_A) key_A = pressed;
-                else if (waiting_for_key == BTN_B) key_B = pressed;
-                else if (waiting_for_key == BTN_SELECT) key_SELECT = pressed;
-                else if (waiting_for_key == BTN_START) key_START = pressed;
-                else if (waiting_for_key == BTN_UP) key_UP = pressed;
-                else if (waiting_for_key == BTN_DOWN) key_DOWN = pressed;
-                else if (waiting_for_key == BTN_LEFT) key_LEFT = pressed;
-                else if (waiting_for_key == BTN_RIGHT) key_RIGHT = pressed;
-
+            if (key_already_used(
+                pressed,
+                waiting_for_key,
+                key_A, key_B,
+                key_SELECT, key_START,
+                key_UP, key_DOWN, key_LEFT, key_RIGHT
+    )) {
+                snprintf(
+                    control_error,
+                    sizeof(control_error),
+                    "Key already used: %s",
+                    SDL_GetScancodeName(pressed)
+            );
                 waiting_for_key = -1;
+                continue;
+    }
+
+            if (waiting_for_key == BTN_A) key_A = pressed;
+            else if (waiting_for_key == BTN_B) key_B = pressed;
+            else if (waiting_for_key == BTN_SELECT) key_SELECT = pressed;
+            else if (waiting_for_key == BTN_START) key_START = pressed;
+            else if (waiting_for_key == BTN_UP) key_UP = pressed;
+            else if (waiting_for_key == BTN_DOWN) key_DOWN = pressed;
+            else if (waiting_for_key == BTN_LEFT) key_LEFT = pressed;
+            else if (waiting_for_key == BTN_RIGHT) key_RIGHT = pressed;
+
+            waiting_for_key = -1;
             continue;
-}           
+        }
                 if (event.key.keysym.scancode == SDL_SCANCODE_P) {
                     paused = !paused;
 
@@ -438,18 +482,27 @@ int main(int argc, char **argv)
         }
 
         // Control settings menu
-if (show_control_settings) {
-    if (nk_begin(ctx, "Control Settings",
-        nk_rect(200, 100, 400, 360),
-        NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
-    {
-        nk_layout_row_dynamic(ctx, 25, 1);
+        if (show_control_settings) {
+            if (nk_begin(ctx, "Control Settings",
+                nk_rect(200, 100, 400, 360),
+                NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
+        {
+                nk_layout_row_dynamic(ctx, 25, 1);
 
-        if (waiting_for_key != -1) {
-            nk_label(ctx, "Press any key to bind...", NK_TEXT_CENTERED);
-        } else {
-            nk_label(ctx, "Click a button, then press a key.", NK_TEXT_CENTERED);
-        }
+                if (strlen(control_error) > 0) {
+                    nk_label_colored(
+                    ctx,
+                    control_error,
+                    NK_TEXT_LEFT,
+                    nk_rgb(255, 80, 80)
+                );
+}
+
+            if (waiting_for_key != -1) {
+                nk_label(ctx, "Press any key to bind...", NK_TEXT_CENTERED);
+            } else {
+                nk_label(ctx, "Click a button, then press a key.", NK_TEXT_CENTERED);
+            }
 
         nk_layout_row_dynamic(ctx, 30, 2);
 
