@@ -223,6 +223,16 @@ int main(int argc, char **argv)
 
     // Controller menu stuff
     bool show_control_settings = false;
+    int waiting_for_key = -1;
+
+    SDL_Scancode key_A = SDL_SCANCODE_X;
+    SDL_Scancode key_B = SDL_SCANCODE_Z;
+    SDL_Scancode key_SELECT = SDL_SCANCODE_RSHIFT;
+    SDL_Scancode key_START = SDL_SCANCODE_RETURN;
+    SDL_Scancode key_UP = SDL_SCANCODE_UP;
+    SDL_Scancode key_DOWN = SDL_SCANCODE_DOWN;
+    SDL_Scancode key_LEFT = SDL_SCANCODE_LEFT;
+    SDL_Scancode key_RIGHT = SDL_SCANCODE_RIGHT;
 
     // Main Emulator Loop
     while (running)
@@ -234,6 +244,22 @@ int main(int argc, char **argv)
 
             // --- Pause/Resume Hotkey ---
             if (event.type == SDL_KEYDOWN && event.key.repeat == 0) {
+
+                if (waiting_for_key != -1) {
+                SDL_Scancode pressed = event.key.keysym.scancode;
+
+                if (waiting_for_key == BTN_A) key_A = pressed;
+                else if (waiting_for_key == BTN_B) key_B = pressed;
+                else if (waiting_for_key == BTN_SELECT) key_SELECT = pressed;
+                else if (waiting_for_key == BTN_START) key_START = pressed;
+                else if (waiting_for_key == BTN_UP) key_UP = pressed;
+                else if (waiting_for_key == BTN_DOWN) key_DOWN = pressed;
+                else if (waiting_for_key == BTN_LEFT) key_LEFT = pressed;
+                else if (waiting_for_key == BTN_RIGHT) key_RIGHT = pressed;
+
+                waiting_for_key = -1;
+            continue;
+}           
                 if (event.key.keysym.scancode == SDL_SCANCODE_P) {
                     paused = !paused;
 
@@ -253,15 +279,15 @@ int main(int argc, char **argv)
 
         const Uint8 *keys = SDL_GetKeyboardState(NULL);
 
-        if (keys[SDL_SCANCODE_X])      buttons |= (1u << BTN_A);
-        if (keys[SDL_SCANCODE_Z])      buttons |= (1u << BTN_B);
-        if (keys[SDL_SCANCODE_RSHIFT]) buttons |= (1u << BTN_SELECT);
-        if (keys[SDL_SCANCODE_RETURN]) buttons |= (1u << BTN_START);
+        if (keys[key_A])      buttons |= (1u << BTN_A);
+        if (keys[key_B])      buttons |= (1u << BTN_B);
+        if (keys[key_SELECT]) buttons |= (1u << BTN_SELECT);
+        if (keys[key_START])  buttons |= (1u << BTN_START);
 
-        if (keys[SDL_SCANCODE_UP])     buttons |= (1u << BTN_UP);
-        if (keys[SDL_SCANCODE_DOWN])   buttons |= (1u << BTN_DOWN);
-        if (keys[SDL_SCANCODE_LEFT])   buttons |= (1u << BTN_LEFT);
-        if (keys[SDL_SCANCODE_RIGHT])  buttons |= (1u << BTN_RIGHT);
+        if (keys[key_UP])     buttons |= (1u << BTN_UP);
+        if (keys[key_DOWN])   buttons |= (1u << BTN_DOWN);
+        if (keys[key_LEFT])   buttons |= (1u << BTN_LEFT);
+        if (keys[key_RIGHT])  buttons |= (1u << BTN_RIGHT);
 
         SDL_GameController *controller = findController();
 
@@ -412,18 +438,68 @@ int main(int argc, char **argv)
         }
 
         // Control settings menu
-        if (show_control_settings) {
-            if (nk_begin(ctx, "Control Settings",
-                nk_rect(200, 100, 400, 300),
-                NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
-            {
-                nk_layout_row_dynamic(ctx, 30, 1);
-                if (nk_button_label(ctx, "Close")) {
-                    show_control_settings = false;
-                }
-            }
-            nk_end(ctx);
+if (show_control_settings) {
+    if (nk_begin(ctx, "Control Settings",
+        nk_rect(200, 100, 400, 360),
+        NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
+    {
+        nk_layout_row_dynamic(ctx, 25, 1);
+
+        if (waiting_for_key != -1) {
+            nk_label(ctx, "Press any key to bind...", NK_TEXT_CENTERED);
+        } else {
+            nk_label(ctx, "Click a button, then press a key.", NK_TEXT_CENTERED);
         }
+
+        nk_layout_row_dynamic(ctx, 30, 2);
+
+        nk_label(ctx, "A", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, SDL_GetScancodeName(key_A))) {
+            waiting_for_key = BTN_A;
+        }
+
+        nk_label(ctx, "B", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, SDL_GetScancodeName(key_B))) {
+            waiting_for_key = BTN_B;
+        }
+
+        nk_label(ctx, "Select", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, SDL_GetScancodeName(key_SELECT))) {
+            waiting_for_key = BTN_SELECT;
+        }
+
+        nk_label(ctx, "Start", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, SDL_GetScancodeName(key_START))) {
+            waiting_for_key = BTN_START;
+        }
+
+        nk_label(ctx, "Up", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, SDL_GetScancodeName(key_UP))) {
+            waiting_for_key = BTN_UP;
+        }
+
+        nk_label(ctx, "Down", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, SDL_GetScancodeName(key_DOWN))) {
+            waiting_for_key = BTN_DOWN;
+        }
+
+        nk_label(ctx, "Left", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, SDL_GetScancodeName(key_LEFT))) {
+            waiting_for_key = BTN_LEFT;
+        }
+
+        nk_label(ctx, "Right", NK_TEXT_LEFT);
+        if (nk_button_label(ctx, SDL_GetScancodeName(key_RIGHT))) {
+            waiting_for_key = BTN_RIGHT;
+        }
+
+        nk_layout_row_dynamic(ctx, 30, 1);
+        if (nk_button_label(ctx, "Close")) {
+            show_control_settings = false;
+        }
+    }
+    nk_end(ctx);
+}
 
         // --- Emulation step + audio generation ---
         if (rom_loaded && !paused) {

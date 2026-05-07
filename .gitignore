@@ -7,9 +7,13 @@ roms/
 *.nes
 *_test
 *_test.exe
+*_info.txt
 
 # Misc
 build/
 .vscode/
 Nuklear-4.13.2/
 tinyfiledialogs-current/
+
+# Debug files
+*_debug.txt
