@@ -29,13 +29,12 @@
 #include "apu.h"
 #include "controller.h"
 
-#define SCALE 2
+#define SCALE 2.5
 #define MENU_BAR_HEIGHT 26
 
 #define AUDIO_BUFFER_SAMPLES 1024
 #define SAMPLE_RATE 48000
 #define CPU_HZ 1789773.0f
-#define MASTER_VOLUME 0.5f
 
 /*  
  * Emulator Utility Functions
@@ -205,7 +204,6 @@ int main(int argc, char **argv)
 
     int pending_cpu_cycles = 0;
     bool running = true;
-    bool sound_enabled = true;
     SDL_Event event;
 
     // Position the emulator window below the menu
@@ -218,6 +216,13 @@ int main(int argc, char **argv)
 
     // To pause emulation
     bool paused = false;
+    
+    // Video/Audio menu stuff
+    bool show_av_settings = false;
+    float volume = 0.5f;
+
+    // Controller menu stuff
+    bool show_control_settings = false;
 
     // Main Emulator Loop
     while (running)
@@ -284,11 +289,11 @@ int main(int argc, char **argv)
                 nk_layout_row_dynamic(ctx, 25, 1);
 
                 if (nk_menu_item_label(ctx, "Audio", NK_TEXT_LEFT)) {
-                    // TODO: Audio options with things like mute, or audio slider
+                    show_av_settings = true;
                 }
 
                 if (nk_menu_item_label(ctx, "Video", NK_TEXT_LEFT)) {
-                    // TODO: Video options with things like CRT Lines, and other
+                    show_av_settings = true;
                 }
 
                 if (nk_menu_item_label(ctx, "Quit", NK_TEXT_LEFT)) {
@@ -301,9 +306,7 @@ int main(int argc, char **argv)
             if (nk_menu_begin_label(ctx, "File", NK_TEXT_CENTERED, nk_vec2(120, 120))) {
                 nk_layout_row_dynamic(ctx, 25, 1);
 
-                if (nk_menu_item_label(ctx, "Open ROM", NK_TEXT_LEFT)) {
-                    // TODO: pause emulation
-                    
+                if (nk_menu_item_label(ctx, "Open ROM", NK_TEXT_LEFT)) {                    
                     const char *filterpatterns[] = { "*.nes" };
                     const char *ROMpath = tinyfd_openFileDialog(
                         "Open NES ROM",     // dialog title
@@ -344,25 +347,13 @@ int main(int argc, char **argv)
                     }
 
                     skip_rom_load: ;
-                    // TODO: resume emulation
                 }
 
                 nk_menu_end(ctx);
             }
 
-            if(nk_menu_begin_label(ctx, "Controls", NK_TEXT_CENTERED, nk_vec2(120, 120))) {
-                nk_layout_row_dynamic(ctx, 25, 1);
-
-                if (nk_menu_item_label(ctx, "Keyboard", NK_TEXT_LEFT)) {
-                    // TODO: Handle changing keyboard inputs
-                    //       Will likely require pausing and resuming emulator
-                }
-
-                if (nk_menu_item_label(ctx, "Controller", NK_TEXT_LEFT)) {
-                    // TODO: Handle configuring controller inputs
-                    //       Will likely require pausing and resuming emulator
-                }
-
+            if(nk_menu_begin_label(ctx, "Controls", NK_TEXT_CENTERED, nk_vec2(120,120))) {
+                show_control_settings = true;
                 nk_menu_end(ctx);
             }
 
@@ -389,6 +380,50 @@ int main(int argc, char **argv)
             nk_menubar_end(ctx);
         }
         nk_end(ctx);
+
+        // Audio video settings menu
+        if (show_av_settings) {
+            if (nk_begin(ctx, "Audio/Video Settings",
+                nk_rect(200, 100, 400, 300),
+                NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE))
+            {
+                nk_layout_row_begin(ctx, NK_DYNAMIC, 25, 2);
+                {
+                    nk_layout_row_push(ctx, 0.7f);
+                    nk_label(ctx, "Master Volume", NK_TEXT_LEFT);
+
+                    nk_layout_row_push(ctx, 0.3f);
+
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "%d%%", (int)(volume * 100.0f));
+                    nk_label(ctx, buf, NK_TEXT_RIGHT);
+                }
+                nk_layout_row_end(ctx);
+
+                nk_layout_row_dynamic(ctx, 25, 1);
+                nk_slider_float(ctx, 0.0f, &volume, 1.0f, 0.01f);
+
+                nk_layout_row_dynamic(ctx, 30, 1);
+                if (nk_button_label(ctx, "Close")) {
+                    show_av_settings = false;
+                }
+            }
+            nk_end(ctx);
+        }
+
+        // Control settings menu
+        if (show_control_settings) {
+            if (nk_begin(ctx, "Control Settings",
+                nk_rect(200, 100, 400, 300),
+                NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE | NK_WINDOW_CLOSABLE))
+            {
+                nk_layout_row_dynamic(ctx, 30, 1);
+                if (nk_button_label(ctx, "Close")) {
+                    show_control_settings = false;
+                }
+            }
+            nk_end(ctx);
+        }
 
         // --- Emulation step + audio generation ---
         if (rom_loaded && !paused) {
@@ -432,7 +467,7 @@ int main(int argc, char **argv)
                     }
 
                     float s = (accum_count > 0) ? (accum / (float)accum_count) : 0.0f;
-                    audio_buffer[i] = s * MASTER_VOLUME;
+                    audio_buffer[i] = s * volume;
                 }
 
                 SDL_QueueAudio(device, audio_buffer, sizeof(audio_buffer));
