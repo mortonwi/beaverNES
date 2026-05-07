@@ -47,6 +47,7 @@ set(ROM_LOADER
     ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_2.c
     ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_1.c
     ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_3.c
+    ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_9.c
 )
 
 set(CONTROLLER
