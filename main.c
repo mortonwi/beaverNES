@@ -31,17 +31,14 @@
 
 #define SCALE 2.5
 #define MENU_BAR_HEIGHT 26
+#define NES_BUTTON_COUNT 8
 
 #define AUDIO_BUFFER_SAMPLES 1024
 #define SAMPLE_RATE 48000
 #define CPU_HZ 1789773.0f
 
-/*  
- * Emulator Utility Functions
- */
-
-// helper to find controller inputs
-// Credit goes to rubenwardy 
+// helper function for controllers
+// courtesy of rubenwardy
 // https://blog.rubenwardy.com/2023/01/24/using_sdl_gamecontroller/
 SDL_GameController *findController() {
     for (int i = 0; i < SDL_NumJoysticks(); i++) {
@@ -51,6 +48,20 @@ SDL_GameController *findController() {
     }
 
     return NULL;
+}
+
+// menu ui helper
+static struct nk_rect center_rect(float w, float h)
+{
+    float screen_w = PPU_WIDTH * SCALE;
+    float screen_h = PPU_HEIGHT * SCALE;
+
+    return nk_rect(
+        (screen_w - w) * 0.5f,
+        (screen_h - h) * 0.5f,
+        w,
+        h
+    );
 }
 
 int main(int argc, char **argv)
@@ -169,10 +180,6 @@ int main(int argc, char **argv)
     Bus *bus = bus_create(memory, apu);
     CPU *cpu = cpu_create(bus);
 
-    // Controller 1
-    Controller pad1;
-    controller_init(&pad1);
-
     Cartridge cart;
     char err[256];
     bool rom_loaded = false;
@@ -222,17 +229,46 @@ int main(int argc, char **argv)
     float volume = 0.5f;
 
     // Controller menu stuff
+    SDL_GameController *controller = findController();  // try to find connected controller on launch
+
     bool show_control_settings = false;
     int waiting_for_key = -1;
+    int waiting_for_button = -1;
 
-    SDL_Scancode key_A = SDL_SCANCODE_X;
-    SDL_Scancode key_B = SDL_SCANCODE_Z;
-    SDL_Scancode key_SELECT = SDL_SCANCODE_RSHIFT;
-    SDL_Scancode key_START = SDL_SCANCODE_RETURN;
-    SDL_Scancode key_UP = SDL_SCANCODE_UP;
-    SDL_Scancode key_DOWN = SDL_SCANCODE_DOWN;
-    SDL_Scancode key_LEFT = SDL_SCANCODE_LEFT;
-    SDL_Scancode key_RIGHT = SDL_SCANCODE_RIGHT;
+    // Default controls
+    // needs to be replaced to load previous controls
+    SDL_Scancode keybinds[NES_BUTTON_COUNT] = {
+        [BTN_A]      = SDL_SCANCODE_X,
+        [BTN_B]      = SDL_SCANCODE_Z,
+        [BTN_SELECT] = SDL_SCANCODE_RSHIFT,
+        [BTN_START]  = SDL_SCANCODE_RETURN,
+        [BTN_UP]     = SDL_SCANCODE_UP,
+        [BTN_DOWN]   = SDL_SCANCODE_DOWN,
+        [BTN_LEFT]   = SDL_SCANCODE_LEFT,
+        [BTN_RIGHT]  = SDL_SCANCODE_RIGHT
+    };
+
+    SDL_GameControllerButton padbinds[NES_BUTTON_COUNT] = {
+        [BTN_A]      = SDL_CONTROLLER_BUTTON_A,
+        [BTN_B]      = SDL_CONTROLLER_BUTTON_B,
+        [BTN_SELECT] = SDL_CONTROLLER_BUTTON_BACK,
+        [BTN_START]  = SDL_CONTROLLER_BUTTON_START,
+        [BTN_UP]     = SDL_CONTROLLER_BUTTON_DPAD_UP,
+        [BTN_DOWN]   = SDL_CONTROLLER_BUTTON_DPAD_DOWN,
+        [BTN_LEFT]   = SDL_CONTROLLER_BUTTON_DPAD_LEFT,
+        [BTN_RIGHT]  = SDL_CONTROLLER_BUTTON_DPAD_RIGHT
+    };
+
+    const char *button_names[8] = {
+        "A",
+        "B",
+        "Select",
+        "Start",
+        "Up",
+        "Down",
+        "Left",
+        "Right"
+    };
 
     // Main Emulator Loop
     while (running)
@@ -242,24 +278,13 @@ int main(int argc, char **argv)
             if (event.type == SDL_QUIT)
                 running = false;
 
-            // --- Pause/Resume Hotkey ---
+            // Listen for Pause/Resume and Keybind changes
             if (event.type == SDL_KEYDOWN && event.key.repeat == 0) {
-
                 if (waiting_for_key != -1) {
-                SDL_Scancode pressed = event.key.keysym.scancode;
-
-                if (waiting_for_key == BTN_A) key_A = pressed;
-                else if (waiting_for_key == BTN_B) key_B = pressed;
-                else if (waiting_for_key == BTN_SELECT) key_SELECT = pressed;
-                else if (waiting_for_key == BTN_START) key_START = pressed;
-                else if (waiting_for_key == BTN_UP) key_UP = pressed;
-                else if (waiting_for_key == BTN_DOWN) key_DOWN = pressed;
-                else if (waiting_for_key == BTN_LEFT) key_LEFT = pressed;
-                else if (waiting_for_key == BTN_RIGHT) key_RIGHT = pressed;
-
-                waiting_for_key = -1;
-            continue;
-}           
+                    keybinds[waiting_for_key] = event.key.keysym.scancode;
+                    waiting_for_key = -1;
+                    continue;
+                }
                 if (event.key.keysym.scancode == SDL_SCANCODE_P) {
                     paused = !paused;
 
@@ -270,36 +295,53 @@ int main(int argc, char **argv)
                 }
             }
 
+            // Controller binding
+            if (event.type == SDL_CONTROLLERBUTTONDOWN) {
+                if (waiting_for_button != -1) {
+                    padbinds[waiting_for_button] = event.cbutton.button;
+                    waiting_for_button = -1;
+                    continue;
+                }
+            }
+
+            // Incredible functions from rubenwardy
+            // Controller connection
+            if (event.type == SDL_CONTROLLERDEVICEADDED) {
+                if (!controller) {
+                    controller = SDL_GameControllerOpen(event.cdevice.which);
+                }
+            }
+
+            // Controller disconnection
+            if (event.type == SDL_CONTROLLERDEVICEREMOVED) {
+                if (controller && event.cdevice.which == SDL_JoystickInstanceID(
+                        SDL_GameControllerGetJoystick(controller))) {
+                    SDL_GameControllerClose(controller);
+                    controller = findController();
+                }
+            }
+
             nk_sdl_handle_event(&event);
         }
         nk_input_end(ctx);
 
         // --- Controller input (keyboard → NES controller) ---
         uint8_t buttons = 0;
-
         const Uint8 *keys = SDL_GetKeyboardState(NULL);
 
-        if (keys[key_A])      buttons |= (1u << BTN_A);
-        if (keys[key_B])      buttons |= (1u << BTN_B);
-        if (keys[key_SELECT]) buttons |= (1u << BTN_SELECT);
-        if (keys[key_START])  buttons |= (1u << BTN_START);
+        // handle keyboard presses
+        for (int i = 0; i < NES_BUTTON_COUNT; i++) {
+            if (keys[keybinds[i]]) {
+                buttons |= (1u << i);
+            }
+        }
 
-        if (keys[key_UP])     buttons |= (1u << BTN_UP);
-        if (keys[key_DOWN])   buttons |= (1u << BTN_DOWN);
-        if (keys[key_LEFT])   buttons |= (1u << BTN_LEFT);
-        if (keys[key_RIGHT])  buttons |= (1u << BTN_RIGHT);
-
-        SDL_GameController *controller = findController();
-
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_A))           buttons |= (1u << BTN_A);
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_B))           buttons |= (1u << BTN_B);
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_BACK))        buttons |= (1u << BTN_SELECT);
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_START))       buttons |= (1u << BTN_START);
-
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_UP))     buttons |= (1u << BTN_UP);
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN))   buttons |= (1u << BTN_DOWN);
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT))   buttons |= (1u << BTN_LEFT);
-        if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT))  buttons |= (1u << BTN_RIGHT);
+        // handle controller presses
+        for (int i = 0; i < NES_BUTTON_COUNT; i++) {
+            if (controller && SDL_GameControllerGetButton(controller, padbinds[i])) {
+                buttons |= (1u << i);
+            }
+        }
 
         controller_set_state(&bus->pad1, buttons);
 
@@ -410,7 +452,7 @@ int main(int argc, char **argv)
         // Audio video settings menu
         if (show_av_settings) {
             if (nk_begin(ctx, "Audio/Video Settings",
-                nk_rect(200, 100, 400, 300),
+                center_rect(400, 300),
                 NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
             {
                 nk_layout_row_begin(ctx, NK_DYNAMIC, 25, 2);
@@ -438,68 +480,66 @@ int main(int argc, char **argv)
         }
 
         // Control settings menu
-if (show_control_settings) {
-    if (nk_begin(ctx, "Control Settings",
-        nk_rect(200, 100, 400, 360),
-        NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
-    {
-        nk_layout_row_dynamic(ctx, 25, 1);
+        if (show_control_settings) {
+            if (nk_begin(ctx, "Control Settings",
+                center_rect(500, 360),
+                NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
+            {
+                nk_layout_row_dynamic(ctx, 25, 1);
 
-        if (waiting_for_key != -1) {
-            nk_label(ctx, "Press any key to bind...", NK_TEXT_CENTERED);
-        } else {
-            nk_label(ctx, "Click a button, then press a key.", NK_TEXT_CENTERED);
+                if (controller) {
+                    char buf[128];
+                    snprintf(buf, sizeof(buf), "Controller connected: %s",
+                            SDL_GameControllerName(controller));
+                    nk_label(ctx, buf, NK_TEXT_LEFT);
+                } else {
+                    nk_label(ctx, "Controller: not connected", NK_TEXT_LEFT);
+                }
+
+                if (waiting_for_key != -1 || waiting_for_button != -1) {
+                    nk_label(ctx, "Press any key/button to bind...", NK_TEXT_CENTERED);
+                } else {
+                    nk_label(ctx, "Click a binding, then press an input.", NK_TEXT_CENTERED);
+                }
+
+                // header row
+                nk_layout_row_dynamic(ctx, 25, 3);
+                nk_label(ctx, "", NK_TEXT_LEFT);
+                nk_label(ctx, "Keyboard", NK_TEXT_CENTERED);
+                nk_label(ctx, "Controller", NK_TEXT_CENTERED);
+
+                nk_layout_row_dynamic(ctx, 30, 3);
+
+                for (int i = 0; i < NES_BUTTON_COUNT; i++) {
+                    nk_label(ctx, button_names[i], NK_TEXT_LEFT);
+
+                    if (nk_button_label(ctx, SDL_GetScancodeName(keybinds[i]))) {
+                        waiting_for_key = i;
+                        waiting_for_button = -1;
+                    }
+
+                    if (controller) {
+                        if (nk_button_label(ctx,
+                            SDL_GameControllerGetStringForButton(padbinds[i])))
+                        {
+                            waiting_for_button = i;
+                            waiting_for_key = -1;
+                        }
+                    } else {
+                        nk_label(ctx, "-", NK_TEXT_CENTERED);
+                    }
+                }
+
+                nk_layout_row_dynamic(ctx, 10, 1);
+                nk_spacing(ctx, 1);
+
+                nk_layout_row_dynamic(ctx, 30, 1);
+                if (nk_button_label(ctx, "Close")) {
+                    show_control_settings = false;
+                }
+            }
+            nk_end(ctx);
         }
-
-        nk_layout_row_dynamic(ctx, 30, 2);
-
-        nk_label(ctx, "A", NK_TEXT_LEFT);
-        if (nk_button_label(ctx, SDL_GetScancodeName(key_A))) {
-            waiting_for_key = BTN_A;
-        }
-
-        nk_label(ctx, "B", NK_TEXT_LEFT);
-        if (nk_button_label(ctx, SDL_GetScancodeName(key_B))) {
-            waiting_for_key = BTN_B;
-        }
-
-        nk_label(ctx, "Select", NK_TEXT_LEFT);
-        if (nk_button_label(ctx, SDL_GetScancodeName(key_SELECT))) {
-            waiting_for_key = BTN_SELECT;
-        }
-
-        nk_label(ctx, "Start", NK_TEXT_LEFT);
-        if (nk_button_label(ctx, SDL_GetScancodeName(key_START))) {
-            waiting_for_key = BTN_START;
-        }
-
-        nk_label(ctx, "Up", NK_TEXT_LEFT);
-        if (nk_button_label(ctx, SDL_GetScancodeName(key_UP))) {
-            waiting_for_key = BTN_UP;
-        }
-
-        nk_label(ctx, "Down", NK_TEXT_LEFT);
-        if (nk_button_label(ctx, SDL_GetScancodeName(key_DOWN))) {
-            waiting_for_key = BTN_DOWN;
-        }
-
-        nk_label(ctx, "Left", NK_TEXT_LEFT);
-        if (nk_button_label(ctx, SDL_GetScancodeName(key_LEFT))) {
-            waiting_for_key = BTN_LEFT;
-        }
-
-        nk_label(ctx, "Right", NK_TEXT_LEFT);
-        if (nk_button_label(ctx, SDL_GetScancodeName(key_RIGHT))) {
-            waiting_for_key = BTN_RIGHT;
-        }
-
-        nk_layout_row_dynamic(ctx, 30, 1);
-        if (nk_button_label(ctx, "Close")) {
-            show_control_settings = false;
-        }
-    }
-    nk_end(ctx);
-}
 
         // --- Emulation step + audio generation ---
         if (rom_loaded && !paused) {
@@ -566,7 +606,7 @@ if (show_control_settings) {
         nk_sdl_render(NK_ANTI_ALIASING_ON);
         SDL_RenderPresent(renderer);
     }
- 
+    if (controller) SDL_GameControllerClose(controller);
     nk_sdl_shutdown();
     SDL_CloseAudioDevice(device);
     SDL_DestroyTexture(texture);
