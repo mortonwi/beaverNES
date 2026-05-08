@@ -255,7 +255,7 @@ static void evaluate_sprites(void)
 
         (void)tile; (void)attr; (void)x;
 
-        int row = ppu.scanline - y;
+        int row = (ppu.scanline + 1) - y;
 
         if (row >= 0 && row < sprite_height)
         {
