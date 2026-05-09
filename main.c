@@ -28,6 +28,7 @@
 #include "opcodes.h"
 #include "apu.h"
 #include "controller.h"
+#include "config.h"
 
 #define SCALE 2.5
 #define MENU_BAR_HEIGHT 26
@@ -250,11 +251,14 @@ int main(int argc, char **argv)
     // To pause emulation
     bool paused = false;
     
-    // Video/Audio menu stuff
-    bool show_av_settings = false;
-    float volume = 0.5f;
+    // Config loading
+    EmulatorConfig config;
+    config_load(&config);   // loads from disk, falls back to defaults if no file
 
-    // Controller menu stuff
+    bool show_av_settings = false;
+    float volume = config.volume;
+
+    // Controller set
     SDL_GameController *controller = findController();  // try to find connected controller on launch
 
     bool show_control_settings = false;
@@ -262,29 +266,10 @@ int main(int argc, char **argv)
     int waiting_for_button = -1;
     char control_error[128] = "";
 
-    // Default controls
-    // needs to be replaced to load previous controls
-    SDL_Scancode keybinds[NES_BUTTON_COUNT] = {
-        [BTN_A]      = SDL_SCANCODE_X,
-        [BTN_B]      = SDL_SCANCODE_Z,
-        [BTN_SELECT] = SDL_SCANCODE_RSHIFT,
-        [BTN_START]  = SDL_SCANCODE_RETURN,
-        [BTN_UP]     = SDL_SCANCODE_UP,
-        [BTN_DOWN]   = SDL_SCANCODE_DOWN,
-        [BTN_LEFT]   = SDL_SCANCODE_LEFT,
-        [BTN_RIGHT]  = SDL_SCANCODE_RIGHT
-    };
-
-    SDL_GameControllerButton padbinds[NES_BUTTON_COUNT] = {
-        [BTN_A]      = SDL_CONTROLLER_BUTTON_A,
-        [BTN_B]      = SDL_CONTROLLER_BUTTON_B,
-        [BTN_SELECT] = SDL_CONTROLLER_BUTTON_BACK,
-        [BTN_START]  = SDL_CONTROLLER_BUTTON_START,
-        [BTN_UP]     = SDL_CONTROLLER_BUTTON_DPAD_UP,
-        [BTN_DOWN]   = SDL_CONTROLLER_BUTTON_DPAD_DOWN,
-        [BTN_LEFT]   = SDL_CONTROLLER_BUTTON_DPAD_LEFT,
-        [BTN_RIGHT]  = SDL_CONTROLLER_BUTTON_DPAD_RIGHT
-    };
+    SDL_Scancode keybinds[NES_BUTTON_COUNT];
+    SDL_GameControllerButton padbinds[NES_BUTTON_COUNT];
+    memcpy(keybinds, config.keybinds, sizeof(keybinds));
+    memcpy(padbinds, config.padbinds, sizeof(padbinds));
 
     const char *button_names[8] = {
         "A",
@@ -671,7 +656,15 @@ int main(int argc, char **argv)
         nk_sdl_render(NK_ANTI_ALIASING_ON);
         SDL_RenderPresent(renderer);
     }
+    // save config before shutdown
+    config.volume = volume;
+    memcpy(config.keybinds, keybinds, sizeof(keybinds));
+    memcpy(config.padbinds, padbinds, sizeof(padbinds));
+    config_save(&config);
+
+    // safely close controller
     if (controller) SDL_GameControllerClose(controller);
+
     nk_sdl_shutdown();
     SDL_CloseAudioDevice(device);
     SDL_DestroyTexture(texture);

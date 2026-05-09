@@ -21,6 +21,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/Rom_loader/include
     ${CMAKE_SOURCE_DIR}/controller/include
     ${CMAKE_SOURCE_DIR}/external
+    ${CMAKE_SOURCE_DIR}/config/include
 )
 
 # Sources
@@ -54,12 +55,17 @@ set(CONTROLLER
     ${CMAKE_SOURCE_DIR}/controller/src/controller.c
 )
 
+set(CONFIG
+    ${CMAKE_SOURCE_DIR}/config/src/config.c
+)
+
 add_executable(beaverNES
     ${APU}
     ${CPU}
     ${PPU}
     ${ROM_LOADER}
     ${CONTROLLER}
+    ${CONFIG}
     ${CMAKE_SOURCE_DIR}/external/tinyfiledialogs.c
     ${CMAKE_SOURCE_DIR}/main.c
 )
