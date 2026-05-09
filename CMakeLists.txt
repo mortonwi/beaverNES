@@ -75,7 +75,7 @@ if(WIN32)
     target_link_libraries(beaverNES PRIVATE SDL2::SDL2main SDL2::SDL2)
     set_target_properties(beaverNES PROPERTIES WIN32_EXECUTABLE ON)
 else()
-    target_link_libraries(beaverNES PRIVATE SDL2::SDL2)
+    target_link_libraries(beaverNES PRIVATE SDL2::SDL2 m)
 endif()
 
 # Copy DLLs on Windows (vcpkg) so the exe runs from the build folder
