@@ -67,13 +67,13 @@ static inline void chr_write_4k(Cartridge *cart, uint8_t bank, uint16_t offset, 
 
 // latch update function that handles the cases where the latch needs to point to a new chr bank
 static void update_latches(Mapper9State *st, uint16_t addr) {
-    if (addr == 0x0FD8) {
+    if ((addr & 0x1FF8) == 0x0FD8) {
         st->latch_0 = 0xFD;
-    } else if (addr == 0x0FE8) { 
+    } else if ((addr & 0x1FF8) == 0x0FE8) {
         st->latch_0 = 0xFE;
-    } else if ((addr & 0x1FF8) == 0x1FD8) { 
+    } else if ((addr & 0x1FF8) == 0x1FD8) {
         st->latch_1 = 0xFD;
-    } else if ((addr & 0x1FF8) == 0x1FE8) { 
+    } else if ((addr & 0x1FF8) == 0x1FE8) {
         st->latch_1 = 0xFE;
     }
 }
