@@ -110,7 +110,7 @@ typedef struct {
     // OAM secondary buffer for sprite evaluation
     uint8_t secondary_oam[32];
     uint8_t sprite_count;
-
+    uint8_t sprite_oam_index[8];
     // Sprite rendering
     uint8_t  sprite_shifter_pattern_low[8];
     uint8_t  sprite_shifter_pattern_high[8];
@@ -120,6 +120,10 @@ typedef struct {
 } PPU;
 
 static PPU ppu;
+
+static int ppu_debug_focus(void) {
+    return ppu.frame >= 31 && ppu.frame <= 33;
+}
 
 //Cartridge pointer the PPU uses for CHR accesses (added by Anjelica for ROM Loader integration)
 // Global cartridge pointer used for CHR access
@@ -233,11 +237,11 @@ static void ppu_mem_write(uint16_t addr, uint8_t value) {
     ppu.palette[pal_addr] = value;
 
     // TEMP DEBUG
-    ppu_debug_log("PALETTE WRITE addr=%04X pal=%02X value=%02X\n", addr, pal_addr, value);
+    //ppu_debug_log("PALETTE WRITE addr=%04X pal=%02X value=%02X\n", addr, pal_addr, value);
 }
 
 // Evaluate sprites for current scanline (max 8)
-static void evaluate_sprites(void)
+static void evaluate_sprites(int target_scanline)
 {
     ppu.sprite_count = 0;
 
@@ -254,8 +258,10 @@ static void evaluate_sprites(void)
         uint8_t x    = ppu.oam[i * 4 + 3];
 
         (void)tile; (void)attr; (void)x;
-
-        int row = (ppu.scanline + 1) - y;
+        //original sprite y line
+        //int row = target_scanline - y;
+        //testing tetris sprite 0 hit conditions ***Fixed SMB top UI scroll issue!!!
+        int row = target_scanline - ((int)y + 1);
 
         if (row >= 0 && row < sprite_height)
         {
@@ -267,7 +273,8 @@ static void evaluate_sprites(void)
                 ppu.secondary_oam[idx + 1] = tile;
                 ppu.secondary_oam[idx + 2] = attr;
                 ppu.secondary_oam[idx + 3] = x;
-
+                 // Store original OAM sprite index
+                ppu.sprite_oam_index[ppu.sprite_count] = i;
                 ppu.sprite_count++;
             }
             else
@@ -290,6 +297,7 @@ static void load_sprite_shifters(int next_scanline)
         ppu.sprite_x_counter[i]            = 0;
         ppu.sprite_attr[i]                 = 0;
         ppu.sprite_id[i]                   = 0;
+  
     }
 
     for (int i = 0; i < ppu.sprite_count && i < 8; i++)
@@ -302,8 +310,10 @@ static void load_sprite_shifters(int next_scanline)
         ppu.sprite_x_counter[i] = spr_x;
         ppu.sprite_attr[i]      = spr_attr;
         ppu.sprite_id[i]        = spr_id;
-
-        int row = next_scanline - spr_y;
+        //orginal sprite y line
+        //int row = next_scanline - spr_y;
+        //testing tetris sprite 0 hit conditions ***Fixed SMB top UI scroll issue!!!
+        int row = next_scanline - ((int)spr_y + 1);
         uint8_t sprite_height = (ppu.ppuCtrl & 0x20) ? 16 : 8;
 
         // Vertical flip
@@ -371,14 +381,23 @@ static void tick_sprite_shifters(void)
 void ppu_write(uint16_t addr, uint8_t value) {
     switch (addr & 0x2007) {
         case 0x2000: // PPUCTRL
+             if (ppu_debug_focus()) {
+                ppu_debug_log("PPUCTRL write frame=%d scanline=%d cycle=%d value=%02X before t=%04X v=%04X\n",
+                    ppu.frame, ppu.scanline, ppu.cycle, value, ppu.t, ppu.v);
+            }
             ppu.ppuCtrl = value;
             // Update nametable select bits in temp VRAM address (t)
             ppu.t = (ppu.t & 0xF3FF) | ((uint16_t)(value & 0x03) << 10);
+
+            if (ppu_debug_focus()) {
+                ppu_debug_log("PPUCTRL after  frame=%d scanline=%d cycle=%d t=%04X v=%04X\n",
+                    ppu.frame, ppu.scanline, ppu.cycle, ppu.t, ppu.v);
+            }
             break;
 
         case 0x2001: // PPUMASK
             ppu.ppuMask = value;
-            ppu_debug_log("PPUMASK write = %02X\n", value);
+            //ppu_debug_log("PPUMASK write = %02X\n", value);
             break;
 
         case 0x2003: // OAMADDR
@@ -390,11 +409,15 @@ void ppu_write(uint16_t addr, uint8_t value) {
             break;
 
         case 0x2005: // PPUSCROLL
+            if (ppu_debug_focus()) {
+                ppu_debug_log("PPUSCROLL write frame=%d scanline=%d cycle=%d value=%02X w=%u before v=%04X t=%04X x=%u\n",
+                    ppu.frame, ppu.scanline, ppu.cycle, value, ppu.w, ppu.v, ppu.t, ppu.x);
+            }
             if (!ppu.w) {
-                // First write: horizontal scroll
+                // First write: horizontal scroll            
                 ppu.x = value & 0x07;         // fine X
-                ppu.t = (ppu.t & 0x7FE0)      // keep coarse Y + fine Y + NT
-                      | ((value >> 3) & 0x1F);// coarse X
+                //changed 0x7FE0 to 0xFFE0.
+                ppu.t = (ppu.t & 0xFFE0) | ((value >> 3) & 0x1F);
                 ppu.w = 1;
             } else {
                 // Second write: vertical scroll
@@ -402,6 +425,10 @@ void ppu_write(uint16_t addr, uint8_t value) {
                       | ((uint16_t)(value & 0x07) << 12) // fine Y
                       | ((uint16_t)(value & 0xF8) << 2); // coarse Y
                 ppu.w = 0;
+            }
+             if (ppu_debug_focus()) {
+                ppu_debug_log("PPUSCROLL after  frame=%d scanline=%d cycle=%d w=%u v=%04X t=%04X x=%u\n",
+                    ppu.frame, ppu.scanline, ppu.cycle, ppu.w, ppu.v, ppu.t, ppu.x);
             }
             break;
 
@@ -415,7 +442,7 @@ void ppu_write(uint16_t addr, uint8_t value) {
                 ppu.w = 0;
 
         // TEMP DEBUG
-        ppu_debug_log("PPUADDR set v=%04X\n", ppu.v);
+        //ppu_debug_log("PPUADDR set v=%04X\n", ppu.v);
     }
     break;
 
@@ -441,6 +468,11 @@ uint8_t ppu_read(uint16_t addr) {
         result = ppu.ppuStatus;
         ppu.ppuStatus &= (uint8_t)~0x80; // clear VBlank
         ppu.w = 0;
+        
+        if (ppu_debug_focus() && (ppu.ppuStatus & 0x40) && ppu.scanline < 40) {
+            ppu_debug_log("PPUSTATUS read frame=%d scanline=%d cycle=%d status=%02X v=%04X t=%04X x=%u\n",
+                ppu.frame, ppu.scanline, ppu.cycle, ppu.ppuStatus, ppu.v, ppu.t, ppu.x);
+        }
 
          break;
 
@@ -471,7 +503,7 @@ void ppu_clock(void)
 
     int visible_scanline   = (ppu.scanline >= 0 && ppu.scanline < 240);
     int prerender_scanline = (ppu.scanline == 261);
-
+    //Originally ppu.cycle <= 257. The change to 256 fixed game load issues with TLoZ and SMB. 
     int visible_cycle = (ppu.cycle >= 1 && ppu.cycle <= 256);
     int fetch_cycle =
         ((ppu.cycle >= 1 && ppu.cycle <= 256) ||
@@ -495,18 +527,18 @@ void ppu_clock(void)
         uint8_t bg_palette = (uint8_t)((a1 << 1) | a0);
 
         // TEMP DEBUG
-        if (ppu.cycle == 50 && ppu.scanline == 50) {
-            ppu_debug_log(
-                "BG sample: tile=%02X lsb=%02X msb=%02X bg_pixel=%u palette=%u mask=%02X ctrl=%02X\n",
-                ppu.next_tile_id,
-                ppu.next_tile_lsb,
-                ppu.next_tile_msb,
-                bg_pixel,
-                bg_palette,
-                ppu.ppuMask,
-                ppu.ppuCtrl
-            );
-        }
+        // if (ppu.cycle == 50 && ppu.scanline == 50) {
+        //     ppu_debug_log(
+        //         "BG sample: tile=%02X lsb=%02X msb=%02X bg_pixel=%u palette=%u mask=%02X ctrl=%02X\n",
+        //         ppu.next_tile_id,
+        //         ppu.next_tile_lsb,
+        //         ppu.next_tile_msb,
+        //         bg_pixel,
+        //         bg_palette,
+        //         ppu.ppuMask,
+        //         ppu.ppuCtrl
+        //     );
+        // }
 
         // Left 8 pixel background clipping
         if (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8) {
@@ -532,8 +564,12 @@ void ppu_clock(void)
                 {
                     sprite_palette  = (uint8_t)((ppu.sprite_attr[i] & 0x03) + 0x04);
                     sprite_priority = (uint8_t)((ppu.sprite_attr[i] & 0x20) == 0);
-
-                    if (i == 0) sprite_zero_rendering = 1;
+                    //testing different methods: treat all sprites as sprite 0 for hit detection
+                    //if (ppu.sprite_oam_index[i] == 0) sprite_zero_rendering = 1;
+                    if (ppu.sprite_oam_index[i] == 0) {
+                        sprite_zero_rendering = 1;
+                    }
+                    //if (i == 0) sprite_zero_rendering = 1; //original method
                     break;
                 }
             }
@@ -579,8 +615,13 @@ void ppu_clock(void)
                 int left_bg_clipped = (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8);
                 int left_sprite_clipped = (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8);
 
-                if (!left_bg_clipped && !left_sprite_clipped)
+                if (!left_bg_clipped && !left_sprite_clipped && ppu.cycle < 256)
                 {
+                    //debug logging for sprite 0 hit conditions
+                    if (ppu_debug_focus() && !(ppu.ppuStatus & 0x40)) {
+                        ppu_debug_log("SPRITE0 HIT frame=%d scanline=%d cycle=%d bg=%u sp=%u v=%04X t=%04X x=%u\n",
+                            ppu.frame, ppu.scanline, ppu.cycle, bg_pixel, sprite_pixel, ppu.v, ppu.t, ppu.x);
+                    }
                     ppu.ppuStatus |= 0x40;
                 }
             }
@@ -607,15 +648,28 @@ void ppu_clock(void)
         }
     }
 
-    // Shift background registers AFTER drawing the current pixel
-    if (fetch_cycle)
+    // Shift background registers AFTER drawing the current pixel ***ORIGINAL METHOD***
+    // if (fetch_cycle)
+    // {
+    //     ppu.bg_shift_pattern_low  <<= 1;
+    //     ppu.bg_shift_pattern_high <<= 1;
+    //     ppu.bg_shift_attr_low     <<= 1;
+    //     ppu.bg_shift_attr_high    <<= 1;
+
+    //     if (visible_cycle) {
+    //         tick_sprite_shifters();
+    //     }
+    // }
+
+    // TESTING NEW: Shift registers only during real rendering cycles
+    if (rendering_enabled && ((visible_scanline || prerender_scanline) && ((ppu.cycle >= 2 && ppu.cycle <= 256) || (ppu.cycle >= 322 && ppu.cycle <= 337))))
     {
         ppu.bg_shift_pattern_low  <<= 1;
         ppu.bg_shift_pattern_high <<= 1;
         ppu.bg_shift_attr_low     <<= 1;
         ppu.bg_shift_attr_high    <<= 1;
 
-        if (visible_cycle) {
+        if (visible_scanline && ppu.cycle >= 2 && ppu.cycle <= 256) {
             tick_sprite_shifters();
         }
     }
@@ -681,15 +735,18 @@ void ppu_clock(void)
 
         case 7:
         {
-            // coarse X increment
-            if ((ppu.v & 0x001F) == 31)
-            {
-                ppu.v &= (uint16_t)~0x001F;
-                ppu.v ^= 0x0400;
-            }
-            else
-            {
-                ppu.v += 1;
+            // Coarse X increments at tile fetch boundaries,
+            //NOT at cycle 256. Cycle 256 is vertical scroll increment.
+            if (ppu.cycle != 256) {
+                if ((ppu.v & 0x001F) == 31)
+                {
+                    ppu.v &= (uint16_t)~0x001F;
+                    ppu.v ^= 0x0400;
+                }
+                else
+                {
+                    ppu.v += 1;
+                }
             }
             break;
         }
@@ -733,7 +790,8 @@ void ppu_clock(void)
     ppu.v = (ppu.v & (uint16_t)~0x041F) | (ppu.t & 0x041F);
 
     if (visible_scanline) {
-        evaluate_sprites();
+        //fix for sprite issues. Keeps sprite evaluation and loading in the same
+        evaluate_sprites(ppu.scanline + 1);
         load_sprite_shifters(ppu.scanline + 1);
     }
 }

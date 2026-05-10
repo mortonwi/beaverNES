@@ -159,7 +159,8 @@ bool rom_load(const char *path, Cartridge *out_cart, char *err_msg, size_t err_m
         }
     }
 
-    if (out_cart->header.mapper == 1) {
+    //PRG-RAM allocated to mapper 4 when needed. changes made by Elvis-dev for mapper 4 integration
+    if (out_cart->header.mapper == 1 || out_cart->header.mapper == 4) {
         // Mapper 1 (MMC1) has optional PRG RAM up to 32 KB
         out_cart->prg_ram_size = 32u * 1024u;
         out_cart->prg_ram = (uint8_t*)calloc(1, out_cart->prg_ram_size);

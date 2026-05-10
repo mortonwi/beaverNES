@@ -7,6 +7,7 @@ Mapper *mapper1_create(void);
 Mapper *mapper2_create(void);
 Mapper *mapper3_create(void);
 Mapper *mapper9_create(void);
+Mapper *mapper4_create(void);
 
 Mapper *mapper_create(uint8_t mapper_id) {
     switch (mapper_id) {
@@ -15,6 +16,7 @@ Mapper *mapper_create(uint8_t mapper_id) {
         case 2: return mapper2_create();
         case 3: return mapper3_create();
         case 9: return mapper9_create();
+        case 4: return mapper4_create();
         default: return NULL;
     }
 }
