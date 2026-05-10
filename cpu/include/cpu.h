@@ -54,6 +54,9 @@ int cpu_step(CPU *cpu);
 void cpu_connect_bus(CPU *cpu, void *bus);
 void cpu_nmi(CPU *cpu);
 
+//CPU IRQ support- added by elvis-dev
+void cpu_irq(CPU *cpu);
+
 void cpu_write8(CPU *cpu, uint16_t addr, uint8_t val);
 uint8_t cpu_read8(CPU *cpu, uint16_t addr);
 

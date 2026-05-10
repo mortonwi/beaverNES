@@ -9,7 +9,7 @@
 //full MMC3 IRQ behavior not ready yet.
 #include "mapper.h"
 #include "rom_loader.h"
-
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -30,6 +30,8 @@ typedef struct {
     // IRQ fields are stored for future PPU/CPU integration.
     uint8_t irq_latch;
     uint8_t irq_counter;
+    uint8_t prev_a12;
+    uint16_t a12_low_cycles;
     bool irq_reload;
     bool irq_enabled;
     bool irq_pending;
@@ -157,9 +159,11 @@ static bool mapper4_cpu_write(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t
         if (even) {
             // $C000 even: IRQ latch
             s->irq_latch = value;
+            printf("MMC3 IRQ LATCH=%u\n", value);
         } else {
             // $C001 odd: IRQ reload
             s->irq_reload = true;
+            printf("MMC3 IRQ RELOAD\n");
         }
         return true;
     }
@@ -169,9 +173,11 @@ static bool mapper4_cpu_write(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t
             // $E000 even: disable IRQ
             s->irq_enabled = false;
             s->irq_pending = false;
+            printf("MMC3 IRQ DISABLE\n");
         } else {
             // $E001 odd: enable IRQ
             s->irq_enabled = true;
+            printf("MMC3 IRQ ENABLE\n");
         }
         return true;
     }
@@ -263,6 +269,48 @@ static bool mapper4_ppu_write(Mapper *m, Cartridge *cart, uint16_t addr, uint8_t
     return true;
 }
 
+static void mapper4_notify_a12(Mapper *m, Cartridge *cart, uint16_t addr) {
+    (void)cart;
+
+    Mapper4State *s = (Mapper4State*)m->state;
+    uint8_t a12 = (addr & 0x1000) ? 1 : 0;
+
+    if (!a12) {
+        if (s->a12_low_cycles < 1000) {
+            s->a12_low_cycles++;
+        }
+    }
+
+    if (a12 && !s->prev_a12 && s->a12_low_cycles >= 8) {
+        if (s->irq_counter == 0 || s->irq_reload) {
+            s->irq_counter = s->irq_latch;
+            s->irq_reload = false;
+        } else {
+            s->irq_counter--;
+        }
+
+        if (s->irq_counter == 0 && s->irq_enabled) {
+            s->irq_pending = true;
+        }
+
+        s->a12_low_cycles = 0;
+
+        printf("MMC3 IRQ clock latch=%u counter=%u reload=%d enabled=%d pending=%d\n", s->irq_latch, s->irq_counter, s->irq_reload, s->irq_enabled, s->irq_pending);
+    }
+
+    s->prev_a12 = a12;
+}
+
+static bool mapper4_irq_pending(Mapper *m) {
+    Mapper4State *s = (Mapper4State*)m->state;
+    return s->irq_pending;
+}
+
+static void mapper4_clear_irq(Mapper *m) {
+    Mapper4State *s = (Mapper4State*)m->state;
+    s->irq_pending = false;
+}
+
 static void mapper4_destroy(Mapper *m) {
     if (!m) return;
     free(m->state);
@@ -284,8 +332,10 @@ Mapper *mapper4_create(void) {
      * The game usually writes $A000 to set MMC3 mirroring.
      */
     s->mirroring = 0;
-
     m->mapper_id = 4;
+    m->notify_a12 = mapper4_notify_a12;
+    m->irq_pending = mapper4_irq_pending;
+    m->clear_irq = mapper4_clear_irq;
     m->cpu_read = mapper4_cpu_read;
     m->cpu_write = mapper4_cpu_write;
     m->ppu_read = mapper4_ppu_read;

@@ -29,6 +29,11 @@ struct Mapper {
     //mirroring query (0 = horizontal, 1 = vertical)
     uint8_t (*get_mirroring)(Mapper *m);
 
+       // MMC3 IRQ/Mapper 4 scanline support
+    void (*notify_a12)(Mapper *m, Cartridge *cart, uint16_t addr);
+    bool (*irq_pending)(Mapper *m);
+    void (*clear_irq)(Mapper *m);
+
     void *state;
 
     void (*destroy)(Mapper *m);

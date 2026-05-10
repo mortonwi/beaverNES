@@ -3,6 +3,7 @@
 #include "../include/opcodes.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include "mapper.h"
 
 CPU *cpu_create(void *bus) {
     CPU *c = (CPU*)malloc(sizeof(CPU));
@@ -80,6 +81,15 @@ void cpu_reset(CPU *cpu) {
 int cpu_step(CPU *cpu) {
     Bus *bus = (Bus*)cpu->bus;
 
+    // Handle mapper-generated IRQs. MMC3/mapper4 scanline IRQ support added by elvis-dev
+    if (bus->rom && bus->rom->mapper && bus->rom->mapper->irq_pending && 
+        bus->rom->mapper->irq_pending(bus->rom->mapper) && !get_flag(cpu, FLAG_I)) {
+            
+    cpu_irq(cpu);
+    bus->rom->mapper->clear_irq(bus->rom->mapper);
+    return 7;
+    }
+
     uint64_t start_cycles = cpu->cycles;
 
     // Fetch opcode byte
@@ -130,6 +140,33 @@ void cpu_nmi(CPU *cpu) {
     // Jump to NMI vector at $FFFA/$FFFB
     uint16_t lo = cpu_read8(cpu, 0xFFFA);
     uint16_t hi = cpu_read8(cpu, 0xFFFB);
+    cpu->PC = (uint16_t)((hi << 8) | lo);
+
+    cpu->cycles += 7;
+}
+
+//IRQ handling added by elvis-dev for mapper 4 support.
+void cpu_irq(CPU *cpu) {
+    // Ignore IRQ if Interrupt Disable flag is set
+    if (get_flag(cpu, FLAG_I)) {
+        return;
+    }
+
+    // Push PC high then low
+    cpu_push(cpu, (uint8_t)((cpu->PC >> 8) & 0xFF));
+    cpu_push(cpu, (uint8_t)(cpu->PC & 0xFF));
+
+    // Push status with B cleared, U set
+    set_flag(cpu, FLAG_B, false);
+    set_flag(cpu, FLAG_U, true);
+    cpu_push(cpu, cpu->P);
+
+    // Set Interrupt Disable flag
+    set_flag(cpu, FLAG_I, true);
+
+    // IRQ vector at $FFFE/$FFFF
+    uint16_t lo = cpu_read8(cpu, 0xFFFE);
+    uint16_t hi = cpu_read8(cpu, 0xFFFF);
     cpu->PC = (uint16_t)((hi << 8) | lo);
 
     cpu->cycles += 7;

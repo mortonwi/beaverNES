@@ -190,13 +190,28 @@ static uint8_t ppu_mem_read(uint16_t addr) {
     addr &= 0x3FFF;
 
     // $0000-$1FFF: CHR via cartridge/mapper when connected
+    //original CHR read logic when no cart connected
+    // if (addr < 0x2000) {
+    //     uint8_t data = 0;
+    //     if (g_cart && cart_ppu_read(g_cart, addr, &data))
+    //         return data;
+
+    //     return 0;
+    // }
+    //Update so CHR reads notify mapper 4 about PPU A12
     if (addr < 0x2000) {
         uint8_t data = 0;
+        // MMC3 / Mapper 4 IRQ clocking watches PPU A12 during pattern table reads.
+        if (g_cart && g_cart->mapper && g_cart->mapper->notify_a12) {
+            g_cart->mapper->notify_a12(g_cart->mapper, g_cart, addr);
+        }
+
         if (g_cart && cart_ppu_read(g_cart, addr, &data))
             return data;
 
         return 0;
     }
+//------------------------End of CHR read update------------------------------
 
     // $2000-$3EFF: nametables
     if (addr < 0x3F00) {
