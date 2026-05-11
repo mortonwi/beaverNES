@@ -121,6 +121,16 @@ typedef struct {
 
 static PPU ppu;
 
+// ppu load/save functions
+bool ppu_save_state(FILE *f) {
+    if (!f) return false;
+    return fwrite(&ppu, sizeof(PPU), 1, f) == 1;
+}
+
+bool ppu_load_state(FILE *f) {
+    if (!f) return false;
+    return fread(&ppu, sizeof(PPU), 1, f) == 1;
+}
 static int ppu_debug_focus(void) {
     return ppu.frame >= 31 && ppu.frame <= 33;
 }

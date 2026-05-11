@@ -29,6 +29,7 @@
 #include "apu.h"
 #include "controller.h"
 #include "config.h"
+#include "state.h"
 
 #define SCALE 2.5
 #define MENU_BAR_HEIGHT 26
@@ -206,6 +207,7 @@ int main(int argc, char **argv)
     APU *apu = apu_create();
     Bus *bus = bus_create(memory, apu);
     CPU *cpu = cpu_create(bus);
+    bus->cpu = cpu; // Needed for save/load state system
 
     Cartridge cart;
     char err[256];
@@ -454,6 +456,66 @@ int main(int argc, char **argv)
                     }
 
                     skip_rom_load: ;
+                }
+                // Save emulator state to file
+                if (nk_menu_item_label(ctx, "Save State", NK_TEXT_LEFT)) {
+                    if (rom_loaded) {
+
+                        // Only allow .bvs save state files
+                        const char *filterpatterns[] = { "*.bvs" };
+
+                        // Open save file dialog
+                        const char *path = tinyfd_saveFileDialog(
+                            "Save State",
+                            "save_state.bvs",
+                            1,
+                            filterpatterns,
+                            "beaverNES Save State"
+                        );
+
+                        // Write emulator state if user selected a file
+                        if (path) {
+                            if (!save_state(path, bus)) {
+                                SDL_ShowSimpleMessageBox(
+                                    SDL_MESSAGEBOX_ERROR,
+                                    "Save State Error",
+                                    "Failed to save state.",
+                                    NULL
+                                );
+                            }
+                        }
+                    }
+                }
+
+                // Load emulator state from file
+                if (nk_menu_item_label(ctx, "Load State", NK_TEXT_LEFT)) {
+                    if (rom_loaded) {
+
+                        // Only allow .bvs save state files
+                        const char *filterpatterns[] = { "*.bvs" };
+
+                        // Open load file dialog
+                        const char *path = tinyfd_openFileDialog(
+                            "Load State",
+                            "",
+                            1,
+                            filterpatterns,
+                            "beaverNES Save State",
+                            0
+                        );
+
+                        // Load emulator state if user selected a file
+                        if (path) {
+                            if (!load_state(path, bus)) {
+                                SDL_ShowSimpleMessageBox(
+                                    SDL_MESSAGEBOX_ERROR,
+                                    "Load State Error",
+                                    "Failed to load state.",
+                                    NULL
+                                );
+                            }
+                        }
+                    }
                 }
 
                 nk_menu_end(ctx);

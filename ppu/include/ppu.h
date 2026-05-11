@@ -3,10 +3,15 @@
 
 #include <stdint.h>
 #include "cartridge.h"
+#include <stdbool.h>
+#include <stdio.h>
 
 #define PPU_WIDTH  256
 #define PPU_HEIGHT 240
 
+// save state prototypes
+bool ppu_save_state(FILE *f);
+bool ppu_load_state(FILE *f);
 // Public interface
 
 void ppu_init(void);

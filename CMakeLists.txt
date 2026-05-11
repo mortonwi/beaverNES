@@ -22,11 +22,16 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/controller/include
     ${CMAKE_SOURCE_DIR}/external
     ${CMAKE_SOURCE_DIR}/config/include
+    ${CMAKE_SOURCE_DIR}/state/include
 )
 
 # Sources
 set(APU
     ${CMAKE_SOURCE_DIR}/apu/src/apu.c
+)
+
+set(STATE
+    ${CMAKE_SOURCE_DIR}/state/src/state.c
 )
 
 set(CPU
@@ -66,6 +71,8 @@ add_executable(beaverNES
     ${PPU}
     ${ROM_LOADER}
     ${CONTROLLER}
+    ${STATE}
+
     ${CONFIG}
     ${CMAKE_SOURCE_DIR}/external/tinyfiledialogs.c
     ${CMAKE_SOURCE_DIR}/main.c

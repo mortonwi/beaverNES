@@ -29,6 +29,25 @@ CPU *cpu_create(void *bus) {
     return c;
 }
 
+// subsystem state save/load functions added by elvis-dev
+bool cpu_save_state(CPU *cpu, FILE *f) {
+    if (!cpu || !f) return false;
+    return fwrite(cpu, sizeof(CPU), 1, f) == 1;
+}
+
+bool cpu_load_state(CPU *cpu, FILE *f) {
+    if (!cpu || !f) return false;
+
+    void *old_bus = cpu->bus;
+
+    if (fread(cpu, sizeof(CPU), 1, f) != 1) {
+        return false;
+    }
+
+    cpu->bus = old_bus;
+    return true;
+}
+
 void cpu_connect_bus(CPU *cpu, void *bus) {
     cpu->bus = bus;
 }
@@ -84,7 +103,7 @@ int cpu_step(CPU *cpu) {
     // Handle mapper-generated IRQs. MMC3/mapper4 scanline IRQ support added by elvis-dev
     if (bus->rom && bus->rom->mapper && bus->rom->mapper->irq_pending && 
         bus->rom->mapper->irq_pending(bus->rom->mapper) && !get_flag(cpu, FLAG_I)) {
-            
+
     cpu_irq(cpu);
     bus->rom->mapper->clear_irq(bus->rom->mapper);
     return 7;

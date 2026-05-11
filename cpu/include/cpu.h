@@ -3,10 +3,14 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 // CPU manages registers and flags, interacts with memory through the bus
-
 typedef struct CPU CPU;
+
+// save state prototypes
+bool cpu_save_state(CPU *cpu, FILE *f);
+bool cpu_load_state(CPU *cpu, FILE *f);
 
 struct CPU {
     // Registers
