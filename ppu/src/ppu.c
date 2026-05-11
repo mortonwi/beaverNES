@@ -537,246 +537,231 @@ void ppu_clock(void)
     int rendering_enabled = (ppu.ppuMask & 0x18) != 0;
 
     if (rendering_enabled && (visible_scanline || prerender_scanline) && fetch_cycle)
-{
-    if (visible_scanline && visible_cycle)
     {
-        // Background pixel generation
-        uint16_t bit_mux = (uint16_t)(0x8000 >> ppu.x);
-
-        uint8_t p0 = (ppu.bg_shift_pattern_low  & bit_mux) ? 1 : 0;
-        uint8_t p1 = (ppu.bg_shift_pattern_high & bit_mux) ? 1 : 0;
-        uint8_t bg_pixel = (uint8_t)((p1 << 1) | p0);
-
-        uint8_t a0 = (ppu.bg_shift_attr_low  & bit_mux) ? 1 : 0;
-        uint8_t a1 = (ppu.bg_shift_attr_high & bit_mux) ? 1 : 0;
-        uint8_t bg_palette = (uint8_t)((a1 << 1) | a0);
-
-        // TEMP DEBUG
-        // if (ppu.cycle == 50 && ppu.scanline == 50) {
-        //     ppu_debug_log(
-        //         "BG sample: tile=%02X lsb=%02X msb=%02X bg_pixel=%u palette=%u mask=%02X ctrl=%02X\n",
-        //         ppu.next_tile_id,
-        //         ppu.next_tile_lsb,
-        //         ppu.next_tile_msb,
-        //         bg_pixel,
-        //         bg_palette,
-        //         ppu.ppuMask,
-        //         ppu.ppuCtrl
-        //     );
-        // }
-
-        // Left 8 pixel background clipping
-        if (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8) {
-            bg_pixel = 0;
-        }
-
-        // SPRITE PIXEL FETCH
-        uint8_t sprite_pixel = 0;
-        uint8_t sprite_palette = 0;
-        uint8_t sprite_priority = 0;
-        int sprite_zero_rendering = 0;
-
-        for (int i = 0; i < ppu.sprite_count && i < 8; i++)
+        // Tile fetch pipeline every 8 cycles (runs BEFORE drawing)
+        switch ((ppu.cycle - 1) % 8)
         {
-            if (ppu.sprite_x_counter[i] == 0)
+            case 0:
             {
-                uint8_t sp0 = (ppu.sprite_shifter_pattern_low[i] & 0x80) ? 1 : 0;
-                uint8_t sp1 = (ppu.sprite_shifter_pattern_high[i] & 0x80) ? 1 : 0;
+                // Load shift registers
+                ppu.bg_shift_pattern_low  = (ppu.bg_shift_pattern_low  & 0xFF00) | ppu.next_tile_lsb;
+                ppu.bg_shift_pattern_high = (ppu.bg_shift_pattern_high & 0xFF00) | ppu.next_tile_msb;
 
-                sprite_pixel = (uint8_t)((sp1 << 1) | sp0);
+                // Load attribute bits into shift registers
+                uint8_t attr = ppu.next_tile_attr;
 
-                if (sprite_pixel != 0)
-                {
-                    sprite_palette  = (uint8_t)((ppu.sprite_attr[i] & 0x03) + 0x04);
-                    sprite_priority = (uint8_t)((ppu.sprite_attr[i] & 0x20) == 0);
-                    //testing different methods: treat all sprites as sprite 0 for hit detection
-                    //if (ppu.sprite_oam_index[i] == 0) sprite_zero_rendering = 1;
-                    if (ppu.sprite_oam_index[i] == 0) {
-                        sprite_zero_rendering = 1;
+                ppu.bg_shift_attr_low  = (ppu.bg_shift_attr_low  & 0xFF00) | ((attr & 0x01) ? 0xFF : 0x00);
+                ppu.bg_shift_attr_high = (ppu.bg_shift_attr_high & 0xFF00) | ((attr & 0x02) ? 0xFF : 0x00);
+
+                // Fetch next tile ID from nametable
+                uint16_t nt_addr = 0x2000 | (ppu.v & 0x0FFF);
+                ppu.next_tile_id = ppu_mem_read(nt_addr);
+                break;
+            }
+
+            case 2:
+            {
+                // Attribute table address
+                uint16_t attr_addr =
+                    0x23C0 |
+                    (ppu.v & 0x0C00) |
+                    ((ppu.v >> 4) & 0x38) |
+                    ((ppu.v >> 2) & 0x07);
+
+                uint8_t attr_byte = ppu_mem_read(attr_addr);
+
+                uint8_t shift = (uint8_t)(((ppu.v >> 4) & 4) | (ppu.v & 2));
+                ppu.next_tile_attr = (attr_byte >> shift) & 0x03;
+                break;
+            }
+
+            case 4:
+            {
+                uint16_t pattern_addr =
+                    (uint16_t)(((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)
+                    + (ppu.next_tile_id * 16)
+                    + ((ppu.v >> 12) & 0x7));
+
+                ppu.next_tile_lsb = ppu_mem_read(pattern_addr);
+                break;
+            }
+
+            case 6:
+            {
+                uint16_t pattern_addr =
+                    (uint16_t)(((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)
+                    + (ppu.next_tile_id * 16)
+                    + ((ppu.v >> 12) & 0x7));
+
+                ppu.next_tile_msb = ppu_mem_read((uint16_t)(pattern_addr + 8));
+                break;
+            }
+
+            case 7:
+            {
+                // Coarse X increments at tile fetch boundaries,
+                // NOT at cycle 256. Cycle 256 is vertical scroll increment.
+                if (ppu.cycle != 256) {
+                    if ((ppu.v & 0x001F) == 31)
+                    {
+                        ppu.v &= (uint16_t)~0x001F;
+                        ppu.v ^= 0x0400;
                     }
-                    //if (i == 0) sprite_zero_rendering = 1; //original method
-                    break;
+                    else
+                    {
+                        ppu.v += 1;
+                    }
                 }
+                break;
             }
         }
 
-        // Left 8 pixel sprite clipping
-        if (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8) {
-            sprite_pixel = 0;
-        }
+        // Draw pixel
+        if (visible_scanline && visible_cycle)
+        {
+            // Background pixel generation
+            uint16_t bit_mux = (uint16_t)(0x8000 >> ppu.x);
 
-        // PIXEL MIXING LOGIC
-        uint8_t final_pixel = 0;
-        uint8_t final_palette = 0;
+            uint8_t p0 = (ppu.bg_shift_pattern_low  & bit_mux) ? 1 : 0;
+            uint8_t p1 = (ppu.bg_shift_pattern_high & bit_mux) ? 1 : 0;
+            uint8_t bg_pixel = (uint8_t)((p1 << 1) | p0);
 
-        if (bg_pixel == 0 && sprite_pixel == 0)
-        {
-            final_pixel = 0;
-            final_palette = 0;
-        }
-        else if (bg_pixel == 0 && sprite_pixel != 0)
-        {
-            final_pixel = sprite_pixel;
-            final_palette = sprite_palette;
-        }
-        else if (bg_pixel != 0 && sprite_pixel == 0)
-        {
-            final_pixel = bg_pixel;
-            final_palette = bg_palette;
-        }
-        else
-        {
-            if (sprite_priority) {
+            uint8_t a0 = (ppu.bg_shift_attr_low  & bit_mux) ? 1 : 0;
+            uint8_t a1 = (ppu.bg_shift_attr_high & bit_mux) ? 1 : 0;
+            uint8_t bg_palette = (uint8_t)((a1 << 1) | a0);
+
+            // TEMP DEBUG
+            // if (ppu.cycle == 50 && ppu.scanline == 50) {
+            //     ppu_debug_log(
+            //         "BG sample: tile=%02X lsb=%02X msb=%02X bg_pixel=%u palette=%u mask=%02X ctrl=%02X\n",
+            //         ppu.next_tile_id,
+            //         ppu.next_tile_lsb,
+            //         ppu.next_tile_msb,
+            //         bg_pixel,
+            //         bg_palette,
+            //         ppu.ppuMask,
+            //         ppu.ppuCtrl
+            //     );
+            // }
+
+            // Left 8 pixel background clipping
+            if (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8) {
+                bg_pixel = 0;
+            }
+
+            // SPRITE PIXEL FETCH
+            uint8_t sprite_pixel = 0;
+            uint8_t sprite_palette = 0;
+            uint8_t sprite_priority = 0;
+            int sprite_zero_rendering = 0;
+
+            for (int i = 0; i < ppu.sprite_count && i < 8; i++)
+            {
+                if (ppu.sprite_x_counter[i] == 0)
+                {
+                    uint8_t sp0 = (ppu.sprite_shifter_pattern_low[i] & 0x80) ? 1 : 0;
+                    uint8_t sp1 = (ppu.sprite_shifter_pattern_high[i] & 0x80) ? 1 : 0;
+
+                    sprite_pixel = (uint8_t)((sp1 << 1) | sp0);
+
+                    if (sprite_pixel != 0)
+                    {
+                        sprite_palette  = (uint8_t)((ppu.sprite_attr[i] & 0x03) + 0x04);
+                        sprite_priority = (uint8_t)((ppu.sprite_attr[i] & 0x20) == 0);
+                        if (ppu.sprite_oam_index[i] == 0) {
+                            sprite_zero_rendering = 1;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Left 8 pixel sprite clipping
+            if (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8) {
+                sprite_pixel = 0;
+            }
+
+            // PIXEL MIXING LOGIC
+            uint8_t final_pixel = 0;
+            uint8_t final_palette = 0;
+
+            if (bg_pixel == 0 && sprite_pixel == 0)
+            {
+                final_pixel = 0;
+                final_palette = 0;
+            }
+            else if (bg_pixel == 0 && sprite_pixel != 0)
+            {
                 final_pixel = sprite_pixel;
                 final_palette = sprite_palette;
-            } else {
+            }
+            else if (bg_pixel != 0 && sprite_pixel == 0)
+            {
                 final_pixel = bg_pixel;
                 final_palette = bg_palette;
             }
-
-            // Sprite 0 hit detection
-            if (sprite_zero_rendering)
+            else
             {
-                int left_bg_clipped = (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8);
-                int left_sprite_clipped = (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8);
+                if (sprite_priority) {
+                    final_pixel = sprite_pixel;
+                    final_palette = sprite_palette;
+                } else {
+                    final_pixel = bg_pixel;
+                    final_palette = bg_palette;
+                }
 
-                if (!left_bg_clipped && !left_sprite_clipped && ppu.cycle < 256)
+                // Sprite 0 hit detection
+                if (sprite_zero_rendering)
                 {
-                    //debug logging for sprite 0 hit conditions
-                    if (ppu_debug_focus() && !(ppu.ppuStatus & 0x40)) {
-                        ppu_debug_log("SPRITE0 HIT frame=%d scanline=%d cycle=%d bg=%u sp=%u v=%04X t=%04X x=%u\n",
-                            ppu.frame, ppu.scanline, ppu.cycle, bg_pixel, sprite_pixel, ppu.v, ppu.t, ppu.x);
+                    int left_bg_clipped = (!(ppu.ppuMask & 0x02) && (ppu.cycle - 1) < 8);
+                    int left_sprite_clipped = (!(ppu.ppuMask & 0x04) && (ppu.cycle - 1) < 8);
+
+                    if (!left_bg_clipped && !left_sprite_clipped && ppu.cycle < 256)
+                    {
+                        //debug logging for sprite 0 hit conditions
+                        if (ppu_debug_focus() && !(ppu.ppuStatus & 0x40)) {
+                            ppu_debug_log("SPRITE0 HIT frame=%d scanline=%d cycle=%d bg=%u sp=%u v=%04X t=%04X x=%u\n",
+                                ppu.frame, ppu.scanline, ppu.cycle, bg_pixel, sprite_pixel, ppu.v, ppu.t, ppu.x);
+                        }
+                        ppu.ppuStatus |= 0x40;
                     }
-                    ppu.ppuStatus |= 0x40;
                 }
+            }
+
+            // Final palette lookup and framebuffer write
+            int x = ppu.cycle - 1;
+            int y = ppu.scanline;
+
+            if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT)
+            {
+                uint8_t palette_addr;
+
+                if (final_pixel == 0) {
+                    palette_addr = 0;
+                } else {
+                    palette_addr = (uint8_t)((final_palette << 2) | (final_pixel & 0x03));
+                }
+
+                uint8_t palette_entry = ppu.palette[palette_addr & 0x1F];
+                uint32_t rgb = nes_palette[palette_entry & 0x3F];
+
+                ppu.framebuffer[y * PPU_WIDTH + x] = rgb;
             }
         }
 
-        // Final palette lookup and framebuffer write
-        int x = ppu.cycle - 1;
-        int y = ppu.scanline;
-
-        if (x >= 0 && x < PPU_WIDTH && y >= 0 && y < PPU_HEIGHT)
+        // Shift background and sprite registers — starts at cycle 1
+        if ((ppu.cycle >= 1 && ppu.cycle <= 256) || (ppu.cycle >= 321 && ppu.cycle <= 336))
         {
-            uint8_t palette_addr;
+            ppu.bg_shift_pattern_low  <<= 1;
+            ppu.bg_shift_pattern_high <<= 1;
+            ppu.bg_shift_attr_low     <<= 1;
+            ppu.bg_shift_attr_high    <<= 1;
 
-            if (final_pixel == 0) {
-                palette_addr = 0;
-            } else {
-                palette_addr = (uint8_t)((final_palette << 2) | (final_pixel & 0x03));
+            if (visible_scanline && ppu.cycle >= 1 && ppu.cycle <= 256) {
+                tick_sprite_shifters();
             }
-
-            uint8_t palette_entry = ppu.palette[palette_addr & 0x1F];
-            uint32_t rgb = nes_palette[palette_entry & 0x3F];
-
-            ppu.framebuffer[y * PPU_WIDTH + x] = rgb;
         }
     }
-
-    // Shift background registers AFTER drawing the current pixel ***ORIGINAL METHOD***
-    // if (fetch_cycle)
-    // {
-    //     ppu.bg_shift_pattern_low  <<= 1;
-    //     ppu.bg_shift_pattern_high <<= 1;
-    //     ppu.bg_shift_attr_low     <<= 1;
-    //     ppu.bg_shift_attr_high    <<= 1;
-
-    //     if (visible_cycle) {
-    //         tick_sprite_shifters();
-    //     }
-    // }
-
-    // TESTING NEW: Shift registers only during real rendering cycles
-    if (rendering_enabled && ((visible_scanline || prerender_scanline) && ((ppu.cycle >= 2 && ppu.cycle <= 256) || (ppu.cycle >= 322 && ppu.cycle <= 337))))
-    {
-        ppu.bg_shift_pattern_low  <<= 1;
-        ppu.bg_shift_pattern_high <<= 1;
-        ppu.bg_shift_attr_low     <<= 1;
-        ppu.bg_shift_attr_high    <<= 1;
-
-        if (visible_scanline && ppu.cycle >= 2 && ppu.cycle <= 256) {
-            tick_sprite_shifters();
-        }
-    }
-
-    // Tile fetch pipeline every 8 cycles
-    switch ((ppu.cycle - 1) % 8)
-    {
-        case 0:
-        {
-            // Load shift registers
-            ppu.bg_shift_pattern_low  = (ppu.bg_shift_pattern_low  & 0xFF00) | ppu.next_tile_lsb;
-            ppu.bg_shift_pattern_high = (ppu.bg_shift_pattern_high & 0xFF00) | ppu.next_tile_msb;
-
-            // Load attribute bits into shift registers
-            uint8_t attr = ppu.next_tile_attr;
-
-            ppu.bg_shift_attr_low  = (ppu.bg_shift_attr_low  & 0xFF00) | ((attr & 0x01) ? 0xFF : 0x00);
-            ppu.bg_shift_attr_high = (ppu.bg_shift_attr_high & 0xFF00) | ((attr & 0x02) ? 0xFF : 0x00);
-
-            // Fetch next tile ID from nametable
-            uint16_t nt_addr = 0x2000 | (ppu.v & 0x0FFF);
-            ppu.next_tile_id = ppu_mem_read(nt_addr);
-            break;
-        }
-
-        case 2:
-        {
-            // Attribute table address
-            uint16_t attr_addr =
-                0x23C0 |
-                (ppu.v & 0x0C00) |
-                ((ppu.v >> 4) & 0x38) |
-                ((ppu.v >> 2) & 0x07);
-
-            uint8_t attr_byte = ppu_mem_read(attr_addr);
-
-            uint8_t shift = (uint8_t)(((ppu.v >> 4) & 4) | (ppu.v & 2));
-            ppu.next_tile_attr = (attr_byte >> shift) & 0x03;
-            break;
-        }
-
-        case 4:
-        {
-            uint16_t pattern_addr =
-                (uint16_t)(((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)
-                + (ppu.next_tile_id * 16)
-                + ((ppu.v >> 12) & 0x7));
-
-            ppu.next_tile_lsb = ppu_mem_read(pattern_addr);
-            break;
-        }
-
-        case 6:
-        {
-            uint16_t pattern_addr =
-                (uint16_t)(((ppu.ppuCtrl & 0x10) ? 0x1000 : 0x0000)
-                + (ppu.next_tile_id * 16)
-                + ((ppu.v >> 12) & 0x7));
-
-            ppu.next_tile_msb = ppu_mem_read((uint16_t)(pattern_addr + 8));
-            break;
-        }
-
-        case 7:
-        {
-            // Coarse X increments at tile fetch boundaries,
-            //NOT at cycle 256. Cycle 256 is vertical scroll increment.
-            if (ppu.cycle != 256) {
-                if ((ppu.v & 0x001F) == 31)
-                {
-                    ppu.v &= (uint16_t)~0x001F;
-                    ppu.v ^= 0x0400;
-                }
-                else
-                {
-                    ppu.v += 1;
-                }
-            }
-            break;
-        }
-    }
-}
 
     // Vertical increment at cycle 256 visible scanlines
     if (rendering_enabled && visible_scanline && ppu.cycle == 256)
@@ -811,15 +796,15 @@ void ppu_clock(void)
 
     // Horizontal scroll reload at cycle 257 visible scanlines
     if (rendering_enabled && (visible_scanline || prerender_scanline) && ppu.cycle == 257)
-{
-    ppu.v = (ppu.v & (uint16_t)~0x041F) | (ppu.t & 0x041F);
+    {
+        ppu.v = (ppu.v & (uint16_t)~0x041F) | (ppu.t & 0x041F);
 
-    if (visible_scanline) {
-        //fix for sprite issues. Keeps sprite evaluation and loading in the same
-        evaluate_sprites(ppu.scanline + 1);
-        load_sprite_shifters(ppu.scanline + 1);
+        if (visible_scanline) {
+            //fix for sprite issues. Keeps sprite evaluation and loading in the same
+            evaluate_sprites(ppu.scanline + 1);
+            load_sprite_shifters(ppu.scanline + 1);
+        }
     }
-}
 
     // Vertical scroll reload
     if (rendering_enabled && ppu.scanline == 261 && ppu.cycle >= 280 && ppu.cycle <= 304)

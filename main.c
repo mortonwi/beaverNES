@@ -53,14 +53,16 @@ SDL_GameController *findController() {
 }
 
 // menu centering helper
-static struct nk_rect center_rect(float w, float h)
+static struct nk_rect center_rect(SDL_Window *window, float w, float h)
 {
-    float screen_w = PPU_WIDTH * SCALE;
-    float screen_h = PPU_HEIGHT * SCALE;
+    int screen_w, screen_h;
+    SDL_GetWindowSize(window, &screen_w, &screen_h);
+
+    screen_h -= MENU_BAR_HEIGHT;
 
     return nk_rect(
         (screen_w - w) * 0.5f,
-        (screen_h - h) * 0.5f,
+        MENU_BAR_HEIGHT + (screen_h - h) * 0.5f,
         w,
         h
     );
@@ -90,6 +92,44 @@ static bool pad_already_used(
         if (padbinds[i] == pressed) return true;
     }
     return false;
+}
+
+// toggle fullscreen boolean helper
+static void toggle_fullscreen(SDL_Window *window, bool *fullscreen)
+{
+    // Change variable value at source
+    *fullscreen = !*fullscreen;
+
+    if (*fullscreen) {
+        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    } else {
+        SDL_SetWindowFullscreen(window, 0);
+    }
+}
+
+// recalculate nes_rect helper
+static SDL_Rect get_nes_rect(SDL_Window *window)
+{
+    int w, h;
+    SDL_GetWindowSize(window, &w, &h);
+
+    h -= MENU_BAR_HEIGHT;
+
+    float scale_x = (float)w / PPU_WIDTH;
+    float scale_y = (float)h / PPU_HEIGHT;
+    float scale = (scale_x < scale_y) ? scale_x : scale_y;
+
+    int render_w = (int)(PPU_WIDTH * scale);
+    int render_h = (int)(PPU_HEIGHT * scale);
+
+    SDL_Rect rect = {
+        (w - render_w) / 2,
+        MENU_BAR_HEIGHT + (h - render_h) / 2,
+        render_w,
+        render_h
+    };
+
+    return rect;
 }
 
 int main(int argc, char **argv)
@@ -242,14 +282,6 @@ int main(int argc, char **argv)
     bool running = true;
     SDL_Event event;
 
-    // Position the emulator window below the menu
-    SDL_Rect nes_rect = {
-        0,
-        MENU_BAR_HEIGHT,
-        PPU_WIDTH  * SCALE,
-        PPU_HEIGHT * SCALE
-    };
-
     // To pause emulation
     bool paused = false;
     
@@ -257,8 +289,12 @@ int main(int argc, char **argv)
     EmulatorConfig config;
     config_load(&config);   // loads from disk, falls back to defaults if no file
 
+    // Audio/Video options
     bool show_av_settings = false;
     float volume = config.volume;
+    bool fullscreen = false;
+    bool pending_fullscreen_toggle = false;
+    bool recenter_windows = false;
 
     // Controller set
     SDL_GameController *controller = findController();  // try to find connected controller on launch
@@ -387,13 +423,17 @@ int main(int argc, char **argv)
         controller_set_state(&bus->pad1, buttons);
 
         // --- Nuklear UI input ---
+        int win_w, win_h;
+        SDL_GetWindowSize(window, &win_w, &win_h);
+
         if (nk_begin(ctx, "MenuBar",
-            nk_rect(0, 0, PPU_WIDTH * SCALE, MENU_BAR_HEIGHT),
+            nk_rect(0, 0, win_w, MENU_BAR_HEIGHT),
             NK_WINDOW_NO_SCROLLBAR))
         {
             nk_menubar_begin(ctx);
             nk_layout_row_static(ctx, 20, 60, 5);   // last parameter controls number of elements in the menu
 
+            // Audio/Video/Quit menu options
             if(nk_menu_begin_label(ctx, "Options", NK_TEXT_CENTERED, nk_vec2(120, 120))) {
                 nk_layout_row_dynamic(ctx, 25, 1);
 
@@ -521,11 +561,13 @@ int main(int argc, char **argv)
                 nk_menu_end(ctx);
             }
 
+            // controls option
             if(nk_menu_begin_label(ctx, "Controls", NK_TEXT_CENTERED, nk_vec2(120,120))) {
                 show_control_settings = true;
                 nk_menu_end(ctx);
             }
 
+            // About menu option pointing to project wiki
             if(nk_menu_begin_label(ctx, "About", NK_TEXT_CENTERED, nk_vec2(120, 120))) {
                 nk_layout_row_dynamic(ctx, 25, 1);
 
@@ -553,9 +595,10 @@ int main(int argc, char **argv)
         // Audio video settings menu
         if (show_av_settings) {
             if (nk_begin(ctx, "Audio/Video Settings",
-                center_rect(400, 300),
+                center_rect(window, 400, 300),
                 NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
             {
+                // volume options 
                 nk_layout_row_begin(ctx, NK_DYNAMIC, 25, 2);
                 {
                     nk_layout_row_push(ctx, 0.7f);
@@ -572,6 +615,21 @@ int main(int argc, char **argv)
                 nk_layout_row_dynamic(ctx, 25, 1);
                 nk_slider_float(ctx, 0.0f, &volume, 1.0f, 0.01f);
 
+                // spacer
+                nk_layout_row_dynamic(ctx, 10, 1);
+                nk_spacing(ctx, 1);
+
+                // windowed options
+                nk_layout_row_dynamic(ctx, 25, 1);
+                if (nk_button_label(ctx, fullscreen ? "Windowed" : "Fullscreen")) {
+                    pending_fullscreen_toggle = true;
+                }
+
+                // spacer
+                nk_layout_row_dynamic(ctx, 10, 1);
+                nk_spacing(ctx, 1);
+
+                // close window option
                 nk_layout_row_dynamic(ctx, 30, 1);
                 if (nk_button_label(ctx, "Close")) {
                     show_av_settings = false;
@@ -583,11 +641,12 @@ int main(int argc, char **argv)
         // Control settings menu
         if (show_control_settings) {
             if (nk_begin(ctx, "Control Settings",
-                center_rect(500, 360),
+                center_rect(window, 500, 360),
                 NK_WINDOW_BORDER | NK_WINDOW_TITLE | NK_WINDOW_MOVABLE))
             {
                 nk_layout_row_dynamic(ctx, 25, 1);
 
+                // controller connected indicator
                 if (controller) {
                     char buf[128];
                     snprintf(buf, sizeof(buf), "Controller connected: %s",
@@ -642,15 +701,41 @@ int main(int argc, char **argv)
                     }
                 }
 
+                // spacer
                 nk_layout_row_dynamic(ctx, 10, 1);
                 nk_spacing(ctx, 1);
 
+                // close window option
                 nk_layout_row_dynamic(ctx, 30, 1);
                 if (nk_button_label(ctx, "Close")) {
                     show_control_settings = false;
                 }
             }
             nk_end(ctx);
+        }
+
+        // toggle fullscreen if emulator is waiting for it
+        if (pending_fullscreen_toggle) {
+            toggle_fullscreen(window, &fullscreen);
+            pending_fullscreen_toggle = false;
+            recenter_windows = true;
+        }
+
+        // recenter the movable windows so they dont get lost on a fullscreen/minimization
+        if (recenter_windows) {
+            struct nk_window *av = nk_window_find(ctx, "Audio/Video Settings");
+            if (av) {
+                nk_window_set_bounds(ctx, "Audio/Video Settings",
+                    center_rect(window, 400, 300));
+            }
+
+            struct nk_window *controls = nk_window_find(ctx, "Control Settings");
+            if (controls) {
+                nk_window_set_bounds(ctx, "Control Settings",
+                    center_rect(window, 500, 360));
+            }
+
+            recenter_windows = false;
         }
 
         // --- Emulation step + audio generation ---
@@ -712,6 +797,8 @@ int main(int argc, char **argv)
                 ppu_get_framebuffer(),
                 PPU_WIDTH * (int)sizeof(uint32_t)
             );
+            // recalculate the rectangle for emulation
+            SDL_Rect nes_rect = get_nes_rect(window);
             SDL_RenderCopy(renderer, texture, NULL, &nes_rect);
         }
  
