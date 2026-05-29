@@ -251,7 +251,7 @@ static void ppu_mem_write(uint16_t addr, uint8_t value) {
         ppu.nametable[nt] = value;
 
         // TEMP DEBUG
-        printf("NT WRITE addr=%04X mirrored=%04X value=%02X\n", addr, nt, value);
+        //printf("NT WRITE addr=%04X mirrored=%04X value=%02X\n", addr, nt, value);
 
         return;
 }
@@ -803,6 +803,9 @@ void ppu_clock(void)
             //fix for sprite issues. Keeps sprite evaluation and loading in the same
             evaluate_sprites(ppu.scanline + 1);
             load_sprite_shifters(ppu.scanline + 1);
+        } else if (prerender_scanline) {
+            evaluate_sprites(0);
+            load_sprite_shifters(0);
         }
     }
 
