@@ -739,7 +739,8 @@ int main(int argc, char **argv)
         }
 
         // --- Emulation step + audio generation ---
-        if (rom_loaded && !paused) {
+        // Runs emulation when a rom is loaded, emulator is not paused, and the SDL window is not minimized
+        if (rom_loaded && !paused && !(SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)) {
             if (SDL_GetQueuedAudioSize(device) < TARGET_QUEUED_BYTES) {
                 for (int i = 0; i < AUDIO_BUFFER_SAMPLES; i++) {
                     cpu_sample_frac += CPU_PER_SAMPLE;
