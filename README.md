@@ -1,135 +1,65 @@
 # beaverNES
-Oregon State Capstone (CS 46X) project revolving around NES Emulation.
-
-# Online Resources/links:
-https://www.copetti.org/writings/consoles/nes/
-https://www.nesdev.org/NESDoc.pdf
-https://www.nesdev.org/wiki/NES_reference_guide
+2026 Oregon State University Capstone project designed by the beaverNES team.
 
 
-# beaverNES – ROM Loading & Input Foundations
+## Introduction
+
+beaverNES is an NES emulator designed by the 2026 beaverNES capstone team at Oregon State University. This emulator was created in C and features fully functional simulated NES hardware such as the CPU, GPU, PPU, and APU. Currently only a handleful of mappers are supported. Please see our [Supported Mappers](#supported-mappers) section for supported mappers and titles. Additionally, the emulator features configurable controller and keyboard input.
 
 
----
+## Getting Started
 
-## ROM Loading
+The latest installable release can be [downloaded](https://github.com/mortonwi/beaverNES/releases) for Windows 10/11 from the releases page. 
 
-beaverNES currently supports NES game files using the **iNES format**, which is the standard ROM layout used by most NES cartridges.
+> [!NOTE]
+> Mac and Linux support is deprecated after the Beta release. Support is planned to return in future releases.
 
-### Implemented Functionality
-- Reads and validates the 16-byte iNES header  
-- Verifies correct ROM magic (`"NES" 0x1A`)  
-- Extracts:
-  - PRG-ROM bank count  
-  - CHR-ROM bank count  
-  - Mapper number  
-  - Mirroring mode  
-  - Trainer flag  
-- Loads PRG-ROM and CHR-ROM data into memory buffers  
-- Graceful error handling for invalid or unsupported ROMs  
+Simply extract the release folder and run the `beaverNES.exe` file to launch the emulator.
 
-### Cartridge Model
-ROM data is represented using a `Cartridge` structure, which stores:
-- Parsed iNES header data  
-- PRG-ROM and CHR-ROM buffers  
-- Mapper number and mirroring configuration  
+To play a supported title, do the following:
+1. Click 'File'
+2. Click 'Open ROM'
+3. Using the folder view, navigate to a supported `.nes` ROM file
+4. Select the file and open using the folder view
 
-This structure acts as the software representation of a physical NES cartridge.
+> [!TIP]
+> If your ROM doesn't open, it might not be supported. Please see the [Supported Mappers](#supported-mappers) section for the full compatibility list.
 
----
+To play with a contoller, simply connect your device. Controller connections are handled by the emulator automatically! 
 
-## Memory Mapping (Mapper 0 – NROM)
-
-Initial mapper support targets **Mapper 0 (NROM)**, which requires no bank switching and is ideal for early emulator development.
-
-### Current Mapper 0 Support
-- PRG-ROM mapped into CPU address space (`$8000–$FFFF`)  
-  - 16 KiB PRG-ROM is mirrored into the upper bank  
-  - 32 KiB PRG-ROM is mapped directly  
-- CHR-ROM mapped into PPU address space (`$0000–$1FFF`)  
-- CPU and PPU read helper functions validate address ranges and mirror behavior  
-
-ROM loading and mapping have been tested using real NES ROMs (e.g., *Super Mario Bros.*), confirming correct mapper detection and memory behavior.
+Custom controls can be set in the `Controls` tab of the emulator.
 
 
-## Memory Mapping (Mapper 2 - UxROM)
+## Supported Mappers
 
-Mapper 2 (UxROM) supports PRG-ROM bank switching, allowing larger games to run on the NES.
+An NES mapper refers to the memory mapping of circuits and hardware on original game cartridges. Cartridges were often designed to extend the capabilities of the NES with features like more RAM or audio channels, which require different memory mappings to work. In the emulation setting, software mappers mimic these original cartridge configurations to support classic titles.
 
-### Current Mapper 2 Support
+The following mappers are supported:
+- Mapper 0
+- Mapper 1
+- Mapper 2
+- Mapper 3
+- Mapper 4
+- Mapper 7
+- Mapper 9
 
-- 16 KiB switchable PRG-ROM bank mapped to `$8000-$BFFF`
-- Fixed 16 KiB PRG-ROM bank mapped to `$C000-$FFFF`
-- Bank switching controlled via CPU writes to `$8000-$FFFF`
-- CHR-RAM (8 KiB) mapped to PPU address space `$0000-$1FFF`
-- Proper header-based mapper detection
+> [!NOTE]
+> A common mapper list can be viewed [here](https://www.nesdev.org/wiki/List_of_mappers). Increased mapper support is planned for future releases.
 
-### Behavior Details
+> [!NOTE]
+> A single mapper can support hundreds of games. The full list of currently supported games is too large to be displayed here. To verify ROM support, confirm that your ROM's mapper is contained in the list above.
 
-- Writes to the mapper select the lower PRG bank
-- The upper PRG bank remains fixed to the last bank
-- No CHR-ROM bank switching (CHR-RAM only)
 
-ROM loading and mapping have been tested using real UxROM titles to validate bank switching behavior.
+## Credits
 
----
+A list of open source projects and documents used or referenced for this project.
 
-## Input Handling
+- [Copetti](https://www.copetti.org/writings/consoles/nes/)
+- [NESDev](https://www.nesdev.org/NESDoc.pdf)
+- [Nuklear](https://github.com/Immediate-Mode-UI/Nuklear)
+- [tinyfiledialogs](https://sourceforge.net/projects/tinyfiledialogs/)
 
-NES controllers use a serial shift register, where button states are read one bit at a time through memory-mapped registers.
 
-### Current Implementation
+## Bug Reporting
 
-- SDL2-based cross-platform keyboard input
-- Accurate NES controller shift register behavior
-- Proper strobe ($4016 write) handling
-- Serial bit-by-bit reads matching original hardware
-- Controller state stored as 8-bit value
-
-### Keyboard Mapping (Controller 1)
-
-| NES Button | Keyboard Key |
-|------------|--------------|
-| A          | X |
-| B          | Z |
-| Select     | Right Shift |
-| Start      | Enter |
-| Up         | Arrow Up |
-| Down       | Arrow Down |
-| Left       | Arrow Left |
-| Right      | Arrow Right |
-| Quit Test  | Escape |
-
-### Memory-Mapped Registers
-
-- `$4016` — Controller 1
-
-### Behavior Details
-
-- Writing `1` then `0` to `$4016` latches button states
-- CPU reads shift out bits in this order:
-
-  `A, B, Select, Start, Up, Down, Left, Right`
-
-- Matches original NES hardware behavior
-
-### Build Requirements
-
-- C compiler (C11 or later)
-- `make`
-- SDL2 (`libsdl2-dev` on Linux)  
-
----
-
-## Building and Testing
-
-### Build Requirements
-- C compiler (C11 or later)  
-- `make`  
-- SDL2 (for upcoming input implementation)  
-
-### Example Test Run
-```bash
-make
-./beavernes path/to/game.nes
-
+This project is far from perfect. Please report any bug by creating an [issue](https://github.com/mortonwi/beaverNES/issues). Your help on this little hobby project is appreciated.
