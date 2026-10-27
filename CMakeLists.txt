@@ -18,7 +18,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/apu/include
     ${CMAKE_SOURCE_DIR}/cpu/include
     ${CMAKE_SOURCE_DIR}/ppu/include
-    ${CMAKE_SOURCE_DIR}/Rom_loader/include
+    ${CMAKE_SOURCE_DIR}/rom_loader/include
     ${CMAKE_SOURCE_DIR}/controller/include
     ${CMAKE_SOURCE_DIR}/external
     ${CMAKE_SOURCE_DIR}/config/include
@@ -46,16 +46,16 @@ set(PPU
 )
 
 set(ROM_LOADER
-    ${CMAKE_SOURCE_DIR}/Rom_loader/src/cartridge.c
-    ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper.c
-    ${CMAKE_SOURCE_DIR}/Rom_loader/src/rom_loader.c
-    ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_0.c
-    ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_2.c
-    ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_1.c
-    ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_3.c
-    ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_7.c
-    ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_9.c
-    ${CMAKE_SOURCE_DIR}/Rom_loader/src/mapper_4.c
+    ${CMAKE_SOURCE_DIR}/rom_loader/src/cartridge.c
+    ${CMAKE_SOURCE_DIR}/rom_loader/src/mapper.c
+    ${CMAKE_SOURCE_DIR}/rom_loader/src/rom_loader.c
+    ${CMAKE_SOURCE_DIR}/rom_loader/src/mapper_0.c
+    ${CMAKE_SOURCE_DIR}/rom_loader/src/mapper_2.c
+    ${CMAKE_SOURCE_DIR}/rom_loader/src/mapper_1.c
+    ${CMAKE_SOURCE_DIR}/rom_loader/src/mapper_3.c
+    ${CMAKE_SOURCE_DIR}/rom_loader/src/mapper_7.c
+    ${CMAKE_SOURCE_DIR}/rom_loader/src/mapper_9.c
+    ${CMAKE_SOURCE_DIR}/rom_loader/src/mapper_4.c
 )
 
 set(CONTROLLER
