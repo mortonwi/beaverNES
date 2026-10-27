@@ -4,11 +4,11 @@
   <br>
 </h1>
 
-<h4 align="center">2026 Oregon State University Capstone project designed by the beaverNES team.</h4>
+<h4 align="center">2026 Oregon State University Capstone project designed by the beaverNES team</h4>
 
 
 <p align="center">
-  <img src="https://github.com/mortonwi/beaverNES/blob/cleanup/media/gif/gameplay.gif" alt="beaverNES Demo Gif" />
+  <img src="https://github.com/mortonwi/beaverNES/blob/main/media/gif/gameplay.gif" alt="beaverNES Demo Gif" />
 </p>
 
 ## Introduction
