@@ -14,7 +14,7 @@ beaverNES is an NES emulator designed by the 2026 beaverNES capstone team at Ore
 
 ## Getting Started
 
-The latest installable release can be [downloaded](https://github.com/mortonwi/beaverNES/releases){:target="_blank"} for Windows 10/11 from the releases page. 
+The latest installable release can be [downloaded](https://github.com/mortonwi/beaverNES/releases) for Windows 10/11 from the releases page. 
 
 > [!NOTE]
 > Mac and Linux support is deprecated after the Beta release. Support is planned to return in future releases.
@@ -49,7 +49,7 @@ The following mappers are supported:
 - Mapper 9
 
 > [!NOTE]
-> A common mapper list can be viewed [here](https://www.nesdev.org/wiki/List_of_mappers){:target="_blank"}. Increased mapper support is planned for future releases.
+> A common mapper list can be viewed [here](https://www.nesdev.org/wiki/List_of_mappers). Increased mapper support is planned for future releases.
 
 > [!NOTE]
 > A single mapper can support hundreds of games. The full list of currently supported games is too large to be displayed here. To verify ROM support, confirm that your ROM's mapper is contained in the list above.
@@ -59,13 +59,13 @@ The following mappers are supported:
 
 A list of open source projects and documents used or referenced for this project.
 
-- [Copetti](https://www.copetti.org/writings/consoles/nes/){:target="_blank"}
-- [NESDev](https://www.nesdev.org/NESDoc.pdf){:target="_blank"}
-- [Nuklear](https://github.com/Immediate-Mode-UI/Nuklear){:target="_blank"}
-- [tinyfiledialogs](https://sourceforge.net/projects/tinyfiledialogs/){:target="_blank"}
+- [Copetti](https://www.copetti.org/writings/consoles/nes/)
+- [NESDev](https://www.nesdev.org/NESDoc.pdf)
+- [Nuklear](https://github.com/Immediate-Mode-UI/Nuklear)
+- [tinyfiledialogs](https://sourceforge.net/projects/tinyfiledialogs/)
 
 
 ## Bug Reporting
 
-This project is far from perfect. Please report any bug by creating an [issue](https://github.com/mortonwi/beaverNES/issues){:target="_blank"}. Your help on this little hobby project is appreciated.
+This project is far from perfect. Please report any bug by creating an [issue](https://github.com/mortonwi/beaverNES/issues). Your help on this little hobby project is appreciated.
 
