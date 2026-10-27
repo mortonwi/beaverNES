@@ -6,7 +6,10 @@
 
 <h4 align="center">2026 Oregon State University Capstone project designed by the beaverNES team.</h4>
 
-![screenshot](https://github.com/mortonwi/beaverNES/blob/cleanup/media/gif/gameplay.gif)
+
+<p align="center">
+  <img src="https://github.com/mortonwi/beaverNES/blob/cleanup/media/gif/gameplay.gif" alt="beaverNES Demo Gif" />
+</p>
 
 ## Introduction
 
