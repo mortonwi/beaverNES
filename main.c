@@ -15,9 +15,9 @@
 #define NK_IMPLEMENTATION
 #define NK_SDL_RENDERER_IMPLEMENTATION
 
-#include "nuklear.h"
-#include "nuklear_sdl_renderer.h"
-#include "tinyfiledialogs.h"
+#include "external/nuklear.h"
+#include "external/nuklear_sdl_renderer.h"
+#include "external/tinyfiledialogs.h"
 
 // Emulator components
 #include "cpu.h"
