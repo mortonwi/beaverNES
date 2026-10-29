@@ -4,7 +4,8 @@
   <br>
 </h1>
 
-<h4 align="center">2026 Oregon State University Capstone project designed by the beaverNES team</h4>
+<h4 align="center">2026 Oregon State University Capstone Project</h4>
+<h4 align="center">2026 Oregon State University Capstone Project</h4>
 
 
 <p align="center">
